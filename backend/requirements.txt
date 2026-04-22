@@ -4,7 +4,8 @@ pydantic[email]>=2.6,<3.0
 uvicorn
 werkzeug
 sqlalchemy[asyncio]
-aiosqlite
+asyncpg
 python-jose[cryptography]
 python-multipart
 typing_extensions
+python-dotenv

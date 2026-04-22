@@ -36,7 +36,7 @@ async def get_user_service(db: AsyncSession = Depends(get_db_session)):
     return UserService(UserRepository(db))
 
 async def get_course_service(db: AsyncSession = Depends(get_db_session)) -> CourseService:
-    return CourseService(CourseRepository(db))
+    return CourseService(CourseRepository(db), UserRepository(db))
 
 
 async def get_current_user_id(token: Annotated[str, Depends(oauth2_scheme)]) -> int:

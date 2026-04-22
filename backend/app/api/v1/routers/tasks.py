@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from app.api.v1.dependencies import get_course_service, get_current_user_id
 from app.schemas.tasks import (
@@ -47,15 +47,6 @@ async def get_match_pairs_task(item_id: str, service: CourseService = Depends(ge
     return await service.get_match_pairs_task(item_id)
 
 
-@router.post("/{item_id}/submit", response_model=SubmitOut)
-async def submit_task(
-    item_id: str,
-    body: dict,
-    user_id: int = Depends(get_current_user_id),
-    service: CourseService = Depends(get_course_service),
-):
-    return await service.submit_task(user_id=user_id, item_id=item_id, answer=body)
-
 @router.post("/{item_id}/submit/single-choice", response_model=SubmitOut)
 async def submit_single_choice(
     item_id: str,
@@ -63,10 +54,7 @@ async def submit_single_choice(
     user_id: int = Depends(get_current_user_id),
     service: CourseService = Depends(get_course_service),
 ):
-    task = await service.get_task(item_id)
-    if task.taskType != "single-choice":
-        raise HTTPException(400, "Task type mismatch")
-    return await service.submit_task(user_id=user_id, item_id=item_id, answer=body.model_dump(by_alias=True))
+    return await service.submit_single_choice(user_id=user_id, item_id=item_id, body=body)
 
 
 @router.post("/{item_id}/submit/fill-in-blank", response_model=SubmitOut)
@@ -76,10 +64,7 @@ async def submit_fill_in_blank(
     user_id: int = Depends(get_current_user_id),
     service: CourseService = Depends(get_course_service),
 ):
-    task = await service.get_task(item_id)
-    if task.taskType != "fill-in-blank":
-        raise HTTPException(400, "Task type mismatch")
-    return await service.submit_task(user_id=user_id, item_id=item_id, answer=body.model_dump())
+    return await service.submit_fill_in_blank(user_id=user_id, item_id=item_id, body=body)
 
 
 @router.post("/{item_id}/submit/find-the-bug", response_model=SubmitOut)
@@ -89,10 +74,7 @@ async def submit_find_the_bug(
     user_id: int = Depends(get_current_user_id),
     service: CourseService = Depends(get_course_service),
 ):
-    task = await service.get_task(item_id)
-    if task.taskType != "find-the-bug":
-        raise HTTPException(400, "Task type mismatch")
-    return await service.submit_task(user_id=user_id, item_id=item_id, answer=body.model_dump(by_alias=True))
+    return await service.submit_find_the_bug(user_id=user_id, item_id=item_id, body=body)
 
 
 @router.post("/{item_id}/submit/code-order", response_model=SubmitOut)
@@ -102,10 +84,7 @@ async def submit_code_order(
     user_id: int = Depends(get_current_user_id),
     service: CourseService = Depends(get_course_service),
 ):
-    task = await service.get_task(item_id)
-    if task.taskType != "code-order":
-        raise HTTPException(400, "Task type mismatch")
-    return await service.submit_task(user_id=user_id, item_id=item_id, answer=body.model_dump())
+    return await service.submit_code_order(user_id=user_id, item_id=item_id, body=body)
 
 
 @router.post("/{item_id}/submit/match-pairs", response_model=SubmitOut)
@@ -115,10 +94,7 @@ async def submit_match_pairs(
     user_id: int = Depends(get_current_user_id),
     service: CourseService = Depends(get_course_service),
 ):
-    task = await service.get_task(item_id)
-    if task.taskType != "match-pairs":
-        raise HTTPException(400, "Task type mismatch")
-    return await service.submit_task(user_id=user_id, item_id=item_id, answer=body.model_dump())
+    return await service.submit_match_pairs(user_id=user_id, item_id=item_id, body=body)
 
 
 @router.get("/{item_id}/attempts", response_model=list[TaskAttemptOut])

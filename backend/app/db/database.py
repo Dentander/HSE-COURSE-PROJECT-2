@@ -1,16 +1,16 @@
-from pathlib import Path
-
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-_DB_PATH = Path(__file__).resolve().parents[2] / "education4.db"
-DATABASE_URL = f"sqlite+aiosqlite:///{_DB_PATH.as_posix()}"
+from app.core.config import get_settings
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    connect_args={"check_same_thread": False}
-)
+_settings = get_settings()
+DATABASE_URL = _settings.database_url
+
+_engine_kwargs: dict = {"echo": False}
+if DATABASE_URL.startswith("sqlite"):
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
 
 async_session = sessionmaker(
     engine,

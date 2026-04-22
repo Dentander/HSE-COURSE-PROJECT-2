@@ -48,9 +48,6 @@ class SubmitMatchPairsIn(BaseModel):
     pairs: list[dict[str, str]]
 
 
-SubmitIn = SubmitSingleChoiceIn | SubmitFillBlankIn | SubmitFindBugIn | SubmitCodeOrderIn | SubmitMatchPairsIn
-
-
 class SubmitOut(BaseModel):
     isCorrect: bool
     message: str
