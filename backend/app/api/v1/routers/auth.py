@@ -7,6 +7,7 @@ from app.api.v1.dependencies import get_auth_service, get_current_user_id
 from app.schemas import (
     ChangePasswordIn,
     ForgotPasswordIn,
+    LoginIn,
     MessageOut,
     RefreshTokenIn,
     ResetPasswordIn,
@@ -34,7 +35,17 @@ async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
     service: AuthService = Depends(get_auth_service),
 ):
-    return await service.login(form.username, form.password)
+    """OAuth2 form: fields `username` (email) and `password`, Content-Type: application/x-www-form-urlencoded."""
+    return await service.login((form.username or "").strip(), form.password)
+
+
+@router.post("/login/json", response_model=TokenPair)
+async def login_json(
+    body: LoginIn,
+    service: AuthService = Depends(get_auth_service),
+):
+    """Тот же логин, но JSON `{ \"email\", \"password\" }` — удобно для фронта."""
+    return await service.login(str(body.email), body.password)
 
 
 @router.post("/refresh", response_model=TokenPair)

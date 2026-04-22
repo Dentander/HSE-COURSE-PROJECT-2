@@ -80,5 +80,8 @@ class UserRepository(BaseRepository):
         await self.set_password_reset_token(user_id, None, None)
 
     async def add_xp(self, user_id: int, amount: int) -> None:
+        if amount <= 0:
+            return
         stmt = update(Users).where(Users.user_id == user_id).values(xp=Users.xp + amount)
         await self.session.execute(stmt)
+        await self.session.commit()

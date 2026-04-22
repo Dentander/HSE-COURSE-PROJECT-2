@@ -4,8 +4,6 @@ import json
 from collections import defaultdict
 from typing import Any
 
-import json
-
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -147,24 +145,24 @@ class CourseRepository:
         result = await self.session.execute(select(Item).where(Item.id == item_id))
         return result.scalar_one_or_none()
 
-    async def list_task_item_ids_in_order(self) -> list[str]:
-        from app.models.course import Topic
-
+    async def list_items_course_order(self) -> list[tuple[str, str, str]]:
+        """(item_id, topic_id, item_type) in global course order (topic order, then item order)."""
         stmt = (
-            select(Item.id)
+            select(Item.id, Item.topic_id, Item.type)
             .join(Topic, Topic.id == Item.topic_id)
-            .where(Item.type == "task")
             .order_by(Topic.order.asc(), Item.order.asc())
         )
         result = await self.session.execute(stmt)
-        return [row[0] for row in result.all()]
+        return [(row[0], row[1], row[2]) for row in result.all()]
 
-    async def mark_completed(self, user_id: int, topic_id: str, item_id: str) -> None:
+    async def mark_completed(self, user_id: int, topic_id: str, item_id: str) -> bool:
         self.session.add(UserProgress(user_id=user_id, topic_id=topic_id, item_id=item_id))
         try:
             await self.session.commit()
+            return True
         except IntegrityError:
             await self.session.rollback()
+            return False
 
     async def create_topic(self, topic_id: str, title: str, order: int) -> Topic:
         t = Topic(id=topic_id, title=title, order=order)

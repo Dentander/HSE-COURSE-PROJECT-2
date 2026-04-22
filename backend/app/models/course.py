@@ -22,14 +22,6 @@ class ItemType(str, Enum):
     TASK = "task"
 
 
-class TheoryBlockType(str, Enum):
-    TITLE = "title"
-    SUBTITLE = "subtitle"
-    TEXT = "text"
-    CODE = "code"
-    IMAGE = "image"
-
-
 class TaskType(str, Enum):
     SINGLE_CHOICE = "single-choice"
     FILL_IN_BLANK = "fill-in-blank"
