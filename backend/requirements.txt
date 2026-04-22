@@ -1,7 +1,10 @@
 fastapi
 sqlalchemy
-pydantic
+pydantic[email]>=2.6,<3.0
 uvicorn
 werkzeug
-pydantic[email]
 sqlalchemy[asyncio]
+aiosqlite
+python-jose[cryptography]
+python-multipart
+typing_extensions

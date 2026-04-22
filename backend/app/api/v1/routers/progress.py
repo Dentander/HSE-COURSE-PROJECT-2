@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends
+
+from app.api.v1.dependencies import get_course_service
+from app.services.course_service import CourseService
+
+router = APIRouter(prefix="/progress", tags=["progress"])
+
+
+class ProgressMarkIn(BaseModel):
+    userId: int = Field(alias="userId")
+    topicId: str = Field(alias="topicId")
+    itemId: str = Field(alias="itemId")
+
+
+@router.get("/{user_id}")
+async def get_progress(user_id: int, service: CourseService = Depends(get_course_service)):
+    return await service.get_progress(user_id)
+
+
+@router.post("")
+async def mark_progress(body: ProgressMarkIn, service: CourseService = Depends(get_course_service)):
+    await service.mark_progress(body.userId, body.topicId, body.itemId)
+    return {"ok": True}
+
