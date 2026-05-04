@@ -1,9 +1,11 @@
 from typing import Annotated, Optional
-
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+    OAuth2PasswordBearer,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.security import decode_token, get_user_id_from_token_payload
 from app.db.database import get_db
 from app.repositories.course_repository import CourseRepository
@@ -35,7 +37,10 @@ async def get_auth_service(
 async def get_user_service(db: AsyncSession = Depends(get_db_session)):
     return UserService(UserRepository(db))
 
-async def get_course_service(db: AsyncSession = Depends(get_db_session)) -> CourseService:
+
+async def get_course_service(
+    db: AsyncSession = Depends(get_db_session),
+) -> CourseService:
     return CourseService(CourseRepository(db), UserRepository(db))
 
 
@@ -52,7 +57,9 @@ async def get_current_user_id(token: Annotated[str, Depends(oauth2_scheme)]) -> 
 
 
 async def get_optional_user_id(
-    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(http_bearer_optional)],
+    credentials: Annotated[
+        Optional[HTTPAuthorizationCredentials], Depends(http_bearer_optional)
+    ],
 ) -> Optional[int]:
     if credentials is None:
         return None

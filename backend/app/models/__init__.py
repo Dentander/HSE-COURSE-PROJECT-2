@@ -1,2 +1,4 @@
-from . import users  # noqa: F401
-from . import course  # noqa: F401
+import importlib
+
+importlib.import_module("app.models.users")
+importlib.import_module("app.models.course")

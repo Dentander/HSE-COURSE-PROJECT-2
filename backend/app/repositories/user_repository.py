@@ -1,8 +1,6 @@
 from datetime import datetime
-
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
-
 from .base_repository import BaseRepository
 from ..models.users import Users
 
@@ -51,6 +49,29 @@ class UserRepository(BaseRepository):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def update_unverified_user_for_reregistration(
+        self,
+        user_id: int,
+        name: str,
+        password_hash: str,
+        email_verification_token: str,
+    ) -> bool:
+        stmt = (
+            update(Users)
+            .where(
+                Users.user_id == user_id,
+                Users.email_verified.is_(False),
+            )
+            .values(
+                name=name,
+                password_hash=password_hash,
+                email_verification_token=email_verification_token,
+            )
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return (result.rowcount or 0) > 0
+
     async def mark_email_verified(self, user_id: int) -> None:
         stmt = (
             update(Users)
@@ -61,7 +82,11 @@ class UserRepository(BaseRepository):
         await self.session.commit()
 
     async def set_password_hash(self, user_id: int, password_hash: str) -> None:
-        stmt = update(Users).where(Users.user_id == user_id).values(password_hash=password_hash)
+        stmt = (
+            update(Users)
+            .where(Users.user_id == user_id)
+            .values(password_hash=password_hash)
+        )
         await self.session.execute(stmt)
         await self.session.commit()
 
@@ -82,6 +107,33 @@ class UserRepository(BaseRepository):
     async def add_xp(self, user_id: int, amount: int) -> None:
         if amount <= 0:
             return
-        stmt = update(Users).where(Users.user_id == user_id).values(xp=Users.xp + amount)
+        stmt = (
+            update(Users).where(Users.user_id == user_id).values(xp=Users.xp + amount)
+        )
         await self.session.execute(stmt)
         await self.session.commit()
+
+    async def get_leaderboard_top_rows(
+        self, limit: int = 30
+    ) -> list[tuple[str, int, int]]:
+        top = (
+            select(Users.user_id, Users.name, Users.xp)
+            .order_by(Users.xp.desc(), Users.user_id.asc())
+            .limit(limit)
+            .subquery()
+        )
+        rank_sq = (
+            select(func.count())
+            .select_from(Users)
+            .where(Users.xp > top.c.xp)
+            .scalar_subquery()
+            + 1
+        )
+        stmt = select(top.c.name, top.c.xp, rank_sq.label("rank"))
+        result = await self.session.execute(stmt)
+        return [(row.name, int(row.xp), int(row.rank)) for row in result.all()]
+
+    async def count_users_with_strictly_higher_xp(self, xp: int) -> int:
+        stmt = select(func.count()).select_from(Users).where(Users.xp > xp)
+        result = await self.session.execute(stmt)
+        return int(result.scalar_one() or 0)

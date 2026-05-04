@@ -1,12 +1,10 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any, Literal
-
 from pydantic import BaseModel, Field
 
-
-TaskType = Literal["single-choice", "fill-in-blank", "find-the-bug", "code-order", "match-pairs"]
+TaskType = Literal[
+    "single-choice", "fill-in-blank", "find-the-bug", "code-order", "match-pairs"
+]
 
 
 class TaskGetOut(BaseModel):
@@ -15,15 +13,11 @@ class TaskGetOut(BaseModel):
     taskType: TaskType
     npcText: str = ""
     rewardXp: int = 0
-
     question: str | None = None
     answers: list[str] | None = None
-
     codeTemplate: str | None = None
-
     codeLines: list[str] | None = None
     description: str | None = None
-
     leftItems: list[str] | None = None
     rightItems: list[str] | None = None
 
@@ -60,4 +54,3 @@ class TaskAttemptOut(BaseModel):
     answer: dict[str, Any]
     isCorrect: bool
     createdAt: datetime
-

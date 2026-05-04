@@ -3,14 +3,13 @@ import logging
 import smtplib
 from email.message import EmailMessage
 from urllib.parse import quote
-
 from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 
 def _ascii_safe(text: str) -> str:
-    return text.encode("utf-8", "backslashreplace").decode("ascii")
+    return text
 
 
 def _verification_html(confirm_url: str) -> str:
@@ -21,8 +20,7 @@ def _verification_html(confirm_url: str) -> str:
   <p>Здравствуйте!</p>
   <p>Спасибо за регистрацию. Чтобы завершить её, подтвердите адрес электронной почты — нажмите кнопку ниже.</p>
   <p style="margin:28px 0;">
-    <a href="{confirm_url}" style="display:inline-block;padding:12px 28px;background:#2563eb;color:#ffffff;
-text-decoration:none;border-radius:8px;font-weight:600;">Подтвердить адрес</a>
+    <a href="{confirm_url}" style="display:inline-block;padding:12px 28px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Подтвердить адрес</a>
   </p>
   <p style="font-size:13px;color:#555;">Если кнопка не открывается, скопируйте ссылку в адресную строку браузера:<br/>
   <span style="word-break:break-all;">{confirm_url}</span></p>
@@ -39,13 +37,12 @@ def _reset_html(form_url: str) -> str:
   <p>Здравствуйте!</p>
   <p>Нажмите кнопку, чтобы открыть страницу и задать новый пароль.</p>
   <p style="margin:24px 0;">
-    <a href="{form_url}" style="display:inline-block;padding:12px 24px;background:#059669;color:#ffffff;
-text-decoration:none;border-radius:8px;font-weight:600;">Сбросить пароль</a>
+    <a href="{form_url}" style="display:inline-block;padding:12px 24px;background:#059669;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Сбросить пароль</a>
   </p>
   <p style="font-size:13px;color:#555;">Если кнопка не работает:<br/>
   <span style="word-break:break-all;">{form_url}</span></p>
 </body>
-</html>""" 
+</html>"""
 
 
 class EmailService:
@@ -66,7 +63,6 @@ class EmailService:
                 _ascii_safe(subject),
             )
             return
-
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"] = self.settings.smtp_from
@@ -77,7 +73,9 @@ class EmailService:
 
         def _send_sync() -> None:
             try:
-                with smtplib.SMTP(self.settings.smtp_host, self.settings.smtp_port) as smtp:
+                with smtplib.SMTP(
+                    self.settings.smtp_host, self.settings.smtp_port
+                ) as smtp:
                     if self.settings.smtp_use_tls:
                         smtp.starttls()
                     if self.settings.smtp_user and self.settings.smtp_password:
@@ -95,9 +93,6 @@ class EmailService:
 
         await asyncio.to_thread(_send_sync)
 
-    def _api_base(self) -> str:
-        return self.settings.api_public_base_url.rstrip("/")
-
     def _frontend_base(self) -> str:
         return self.settings.frontend_base_url.rstrip("/")
 
@@ -111,15 +106,15 @@ class EmailService:
             "Если вы не регистрировались на нашем сервисе, проигнорируйте это письмо.\n"
         )
         body_html = _verification_html(confirm_url)
-        await self.send_email(to_email, "Подтвердите адрес электронной почты", body_text, body_html)
+        await self.send_email(
+            to_email, "Подтвердите адрес электронной почты", body_text, body_html
+        )
 
     async def send_password_reset_email(self, to_email: str, token: str) -> None:
         safe = quote(token, safe="")
         reset_url = f"{self._frontend_base()}/reset-password?token={safe}"
         body_text = (
-            "Сброс пароля:\n\n"
-            f"{reset_url}\n\n"
-            "Ссылка действует ограниченное время."
+            f"Сброс пароля:\n\n{reset_url}\n\nСсылка действует ограниченное время."
         )
         body_html = _reset_html(reset_url)
         await self.send_email(to_email, "Восстановление пароля", body_text, body_html)

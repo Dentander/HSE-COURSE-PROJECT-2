@@ -1,8 +1,6 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-
 from fastapi import HTTPException
-
 from app.core.config import Settings, get_settings
 from app.core.security import (
     create_access_token,
@@ -37,15 +35,60 @@ class AuthService:
     async def register(self, data: UserCreate) -> UserOut:
         verification_token = secrets.token_urlsafe(32)
         pwd_hash = hash_password(data.password)
+        email_norm = str(data.email).lower().strip()
+        name_clean = data.name.strip()
+
+        existing = await self.user_repo.get_user_by_email(email_norm)
+        if existing:
+            if existing.email_verified:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Этот email уже зарегистрирован. Используйте вход.",
+                )
+            if not await self.user_repo.update_unverified_user_for_reregistration(
+                existing.user_id,
+                name_clean,
+                pwd_hash,
+                verification_token,
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Не удалось обновить данные для повторной отправки письма.",
+                )
+            refreshed = await self.user_repo.get_user_by_id(existing.user_id)
+            if not refreshed:
+                raise HTTPException(status_code=500, detail="User not found")
+            await self.email_service.send_verification_email(
+                refreshed.email, verification_token
+            )
+            return UserOut.model_validate(refreshed)
+
         try:
             user = await self.user_repo.create_user(
-                data.name.strip(),
-                str(data.email).lower().strip(),
+                name_clean,
+                email_norm,
                 pwd_hash,
                 email_verification_token=verification_token,
             )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+        except ValueError:
+            raced = await self.user_repo.get_user_by_email(email_norm)
+            if (
+                raced
+                and not raced.email_verified
+                and await self.user_repo.update_unverified_user_for_reregistration(
+                    raced.user_id, name_clean, pwd_hash, verification_token
+                )
+            ):
+                refreshed = await self.user_repo.get_user_by_id(raced.user_id)
+                if refreshed:
+                    await self.email_service.send_verification_email(
+                        refreshed.email, verification_token
+                    )
+                    return UserOut.model_validate(refreshed)
+            raise HTTPException(
+                status_code=400,
+                detail="Этот email уже зарегистрирован. Используйте вход.",
+            )
 
         await self.email_service.send_verification_email(user.email, verification_token)
         return UserOut.model_validate(user)
@@ -54,6 +97,10 @@ class AuthService:
         user = await self.user_repo.get_user_by_email(email.lower().strip())
         if not user or not verify_password(password, user.password_hash):
             raise HTTPException(status_code=401, detail="Incorrect email or password")
+        if not user.email_verified:
+            raise HTTPException(
+                status_code=403, detail="Email не подтверждён. Проверьте почту."
+            )
         return self._tokens_for_user(user.user_id)
 
     async def refresh(self, refresh_token: str) -> TokenPair:
@@ -70,11 +117,15 @@ class AuthService:
     async def verify_email(self, token: str) -> MessageOut:
         user = await self.user_repo.get_user_by_email_verification_token(token)
         if not user:
-            raise HTTPException(status_code=400, detail="Invalid or expired verification token")
+            raise HTTPException(
+                status_code=400, detail="Invalid or expired verification token"
+            )
         await self.user_repo.mark_email_verified(user.user_id)
         return MessageOut(message="Email confirmed")
 
-    async def change_password(self, user_id: int, current_password: str, new_password: str) -> MessageOut:
+    async def change_password(
+        self, user_id: int, current_password: str, new_password: str
+    ) -> MessageOut:
         user = await self.user_repo.get_user_by_id(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -86,11 +137,16 @@ class AuthService:
     async def forgot_password(self, email: str) -> MessageOut:
         user = await self.user_repo.get_user_by_email(str(email).lower().strip())
         if not user:
-            return MessageOut(message="If the email exists, reset instructions were sent")
-
+            return MessageOut(
+                message="If the email exists, reset instructions were sent"
+            )
         reset_token = secrets.token_urlsafe(32)
-        expires = datetime.utcnow() + timedelta(hours=self.settings.password_reset_token_hours)
-        await self.user_repo.set_password_reset_token(user.user_id, reset_token, expires)
+        expires = datetime.utcnow() + timedelta(
+            hours=self.settings.password_reset_token_hours
+        )
+        await self.user_repo.set_password_reset_token(
+            user.user_id, reset_token, expires
+        )
         await self.email_service.send_password_reset_email(user.email, reset_token)
         return MessageOut(message="If the email exists, reset instructions were sent")
 
@@ -105,21 +161,31 @@ class AuthService:
     async def reset_password(self, token: str, new_password: str) -> MessageOut:
         user = await self.user_repo.get_user_by_password_reset_token(token)
         if not user or not user.password_reset_expires:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+            raise HTTPException(
+                status_code=400, detail="Invalid or expired reset token"
+            )
         now = self._utcnow_naive()
         expires = self._as_naive_utc(user.password_reset_expires)
         if now > expires:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-        await self.user_repo.set_password_hash(user.user_id, hash_password(new_password))
+            raise HTTPException(
+                status_code=400, detail="Invalid or expired reset token"
+            )
+        await self.user_repo.set_password_hash(
+            user.user_id, hash_password(new_password)
+        )
         await self.user_repo.clear_password_reset_token(user.user_id)
         return MessageOut(message="Password has been reset")
 
     async def validate_reset_password_token(self, token: str) -> MessageOut:
         user = await self.user_repo.get_user_by_password_reset_token(token)
         if not user or not user.password_reset_expires:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+            raise HTTPException(
+                status_code=400, detail="Invalid or expired reset token"
+            )
         now = self._utcnow_naive()
         expires = self._as_naive_utc(user.password_reset_expires)
         if now > expires:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+            raise HTTPException(
+                status_code=400, detail="Invalid or expired reset token"
+            )
         return MessageOut(message="Token is valid")

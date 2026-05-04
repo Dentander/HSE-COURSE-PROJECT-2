@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
-
+from typing import Optional
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -13,7 +11,6 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.db.base import Base
 
 
@@ -32,12 +29,10 @@ class TaskType(str, Enum):
 
 class Topic(Base):
     __tablename__ = "topics"
-
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     order: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-
-    items: Mapped[list[Item]] = relationship(
+    items: Mapped[list["Item"]] = relationship(
         "Item",
         back_populates="topic",
         cascade="all, delete-orphan",
@@ -51,7 +46,6 @@ class Item(Base):
     __table_args__ = (
         UniqueConstraint("topic_id", "order", name="uq_items_topic_order"),
     )
-
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
     topic_id: Mapped[str] = mapped_column(
         String(100),
@@ -62,16 +56,15 @@ class Item(Base):
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     order: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-
     topic: Mapped[Topic] = relationship("Topic", back_populates="items")
-    theory_blocks: Mapped[list[TheoryBlock]] = relationship(
+    theory_blocks: Mapped[list["TheoryBlock"]] = relationship(
         "TheoryBlock",
         back_populates="item",
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="TheoryBlock.order",
     )
-    task: Mapped[Task | None] = relationship(
+    task: Mapped[Optional["Task"]] = relationship(
         "Task",
         back_populates="item",
         cascade="all, delete-orphan",
@@ -85,7 +78,6 @@ class TheoryBlock(Base):
     __table_args__ = (
         UniqueConstraint("item_id", "order", name="uq_theory_blocks_item_order"),
     )
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     item_id: Mapped[str] = mapped_column(
         String(120),
@@ -98,13 +90,11 @@ class TheoryBlock(Base):
     src: Mapped[str | None] = mapped_column(Text, nullable=True)
     alt: Mapped[str | None] = mapped_column(Text, nullable=True)
     order: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-
     item: Mapped[Item] = relationship("Item", back_populates="theory_blocks")
 
 
 class Task(Base):
     __tablename__ = "tasks"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     item_id: Mapped[str] = mapped_column(
         String(120),
@@ -116,47 +106,44 @@ class Task(Base):
     task_type: Mapped[str] = mapped_column(String(30), nullable=False)
     npc_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     reward_xp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
     item: Mapped[Item] = relationship("Item", back_populates="task")
-
-    single_choice: Mapped[TaskSingleChoice | None] = relationship(
+    single_choice: Mapped[Optional["TaskSingleChoice"]] = relationship(
         "TaskSingleChoice",
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
     )
-    fill_blank: Mapped[TaskFillBlank | None] = relationship(
+    fill_blank: Mapped[Optional["TaskFillBlank"]] = relationship(
         "TaskFillBlank",
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
     )
-    find_bug: Mapped[TaskFindBug | None] = relationship(
+    find_bug: Mapped[Optional["TaskFindBug"]] = relationship(
         "TaskFindBug",
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
     )
-    code_order: Mapped[TaskCodeOrder | None] = relationship(
+    code_order: Mapped[Optional["TaskCodeOrder"]] = relationship(
         "TaskCodeOrder",
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
     )
-
-    answers: Mapped[list[TaskAnswer]] = relationship(
+    answers: Mapped[list["TaskAnswer"]] = relationship(
         "TaskAnswer",
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="TaskAnswer.order",
     )
-    code_lines: Mapped[list[TaskCodeLine]] = relationship(
+    code_lines: Mapped[list["TaskCodeLine"]] = relationship(
         "TaskCodeLine",
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="TaskCodeLine.order",
     )
-    pairs: Mapped[list[TaskPair]] = relationship(
+    pairs: Mapped[list["TaskPair"]] = relationship(
         "TaskPair",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -166,7 +153,6 @@ class Task(Base):
 
 class TaskSingleChoice(Base):
     __tablename__ = "task_single_choice"
-
     task_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("tasks.id", ondelete="CASCADE"),
@@ -181,7 +167,6 @@ class TaskAnswer(Base):
     __table_args__ = (
         UniqueConstraint("task_id", "order", name="uq_task_answers_task_order"),
     )
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[int] = mapped_column(
         Integer,
@@ -195,7 +180,6 @@ class TaskAnswer(Base):
 
 class TaskFillBlank(Base):
     __tablename__ = "task_fill_blank"
-
     task_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("tasks.id", ondelete="CASCADE"),
@@ -207,7 +191,6 @@ class TaskFillBlank(Base):
 
 class TaskFindBug(Base):
     __tablename__ = "task_find_bug"
-
     task_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("tasks.id", ondelete="CASCADE"),
@@ -222,7 +205,6 @@ class TaskCodeLine(Base):
     __table_args__ = (
         UniqueConstraint("task_id", "order", name="uq_task_code_lines_task_order"),
     )
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[int] = mapped_column(
         Integer,
@@ -236,7 +218,6 @@ class TaskCodeLine(Base):
 
 class TaskCodeOrder(Base):
     __tablename__ = "task_code_order"
-
     task_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("tasks.id", ondelete="CASCADE"),
@@ -251,7 +232,6 @@ class TaskPair(Base):
     __table_args__ = (
         UniqueConstraint("task_id", "order", name="uq_task_pairs_task_order"),
     )
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[int] = mapped_column(
         Integer,
@@ -269,22 +249,23 @@ class UserProgress(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "item_id", name="uq_user_progress_user_item"),
     )
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     topic_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     item_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
-    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
 
 
 class TaskAttempt(Base):
     __tablename__ = "task_attempts"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     item_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     task_type: Mapped[str] = mapped_column(String(30), nullable=False)
     answer_json: Mapped[str] = mapped_column(Text, nullable=False)
     is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )

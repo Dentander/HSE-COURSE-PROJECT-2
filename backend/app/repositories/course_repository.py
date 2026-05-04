@@ -1,10 +1,7 @@
-from __future__ import annotations
-
+import datetime as dt
 import json
 from collections import defaultdict
-from typing import Any
-
-from sqlalchemy import delete, select
+from sqlalchemy import Date, cast, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from app.models.course import (
@@ -36,53 +33,73 @@ class CourseRepository:
         if not topic_ids:
             return []
         result = await self.session.execute(
-            select(Item).where(Item.topic_id.in_(topic_ids)).order_by(Item.topic_id, Item.order)
+            select(Item)
+            .where(Item.topic_id.in_(topic_ids))
+            .order_by(Item.topic_id, Item.order)
         )
         return list(result.scalars().all())
 
-    async def list_theory_blocks_for_items(self, item_ids: list[str]) -> list[TheoryBlock]:
+    async def list_theory_blocks_for_items(
+        self, item_ids: list[str]
+    ) -> list[TheoryBlock]:
         if not item_ids:
             return []
         result = await self.session.execute(
-            select(TheoryBlock).where(TheoryBlock.item_id.in_(item_ids)).order_by(TheoryBlock.item_id, TheoryBlock.order)
+            select(TheoryBlock)
+            .where(TheoryBlock.item_id.in_(item_ids))
+            .order_by(TheoryBlock.item_id, TheoryBlock.order)
         )
         return list(result.scalars().all())
 
     async def list_tasks_for_items(self, item_ids: list[str]) -> list[Task]:
         if not item_ids:
             return []
-        result = await self.session.execute(select(Task).where(Task.item_id.in_(item_ids)))
+        result = await self.session.execute(
+            select(Task).where(Task.item_id.in_(item_ids))
+        )
         return list(result.scalars().all())
 
-    async def list_task_single_choice(self, task_ids: list[int]) -> list[TaskSingleChoice]:
+    async def list_task_single_choice(
+        self, task_ids: list[int]
+    ) -> list[TaskSingleChoice]:
         if not task_ids:
             return []
-        result = await self.session.execute(select(TaskSingleChoice).where(TaskSingleChoice.task_id.in_(task_ids)))
+        result = await self.session.execute(
+            select(TaskSingleChoice).where(TaskSingleChoice.task_id.in_(task_ids))
+        )
         return list(result.scalars().all())
 
     async def list_task_fill_blank(self, task_ids: list[int]) -> list[TaskFillBlank]:
         if not task_ids:
             return []
-        result = await self.session.execute(select(TaskFillBlank).where(TaskFillBlank.task_id.in_(task_ids)))
+        result = await self.session.execute(
+            select(TaskFillBlank).where(TaskFillBlank.task_id.in_(task_ids))
+        )
         return list(result.scalars().all())
 
     async def list_task_find_bug(self, task_ids: list[int]) -> list[TaskFindBug]:
         if not task_ids:
             return []
-        result = await self.session.execute(select(TaskFindBug).where(TaskFindBug.task_id.in_(task_ids)))
+        result = await self.session.execute(
+            select(TaskFindBug).where(TaskFindBug.task_id.in_(task_ids))
+        )
         return list(result.scalars().all())
 
     async def list_task_code_order(self, task_ids: list[int]) -> list[TaskCodeOrder]:
         if not task_ids:
             return []
-        result = await self.session.execute(select(TaskCodeOrder).where(TaskCodeOrder.task_id.in_(task_ids)))
+        result = await self.session.execute(
+            select(TaskCodeOrder).where(TaskCodeOrder.task_id.in_(task_ids))
+        )
         return list(result.scalars().all())
 
     async def list_task_answers(self, task_ids: list[int]) -> list[TaskAnswer]:
         if not task_ids:
             return []
         result = await self.session.execute(
-            select(TaskAnswer).where(TaskAnswer.task_id.in_(task_ids)).order_by(TaskAnswer.task_id, TaskAnswer.order)
+            select(TaskAnswer)
+            .where(TaskAnswer.task_id.in_(task_ids))
+            .order_by(TaskAnswer.task_id, TaskAnswer.order)
         )
         return list(result.scalars().all())
 
@@ -90,7 +107,9 @@ class CourseRepository:
         if not task_ids:
             return []
         result = await self.session.execute(
-            select(TaskCodeLine).where(TaskCodeLine.task_id.in_(task_ids)).order_by(TaskCodeLine.task_id, TaskCodeLine.order)
+            select(TaskCodeLine)
+            .where(TaskCodeLine.task_id.in_(task_ids))
+            .order_by(TaskCodeLine.task_id, TaskCodeLine.order)
         )
         return list(result.scalars().all())
 
@@ -98,13 +117,34 @@ class CourseRepository:
         if not task_ids:
             return []
         result = await self.session.execute(
-            select(TaskPair).where(TaskPair.task_id.in_(task_ids)).order_by(TaskPair.task_id, TaskPair.order)
+            select(TaskPair)
+            .where(TaskPair.task_id.in_(task_ids))
+            .order_by(TaskPair.task_id, TaskPair.order)
         )
         return list(result.scalars().all())
 
     async def get_task_by_item_id(self, item_id: str) -> Task | None:
         result = await self.session.execute(select(Task).where(Task.item_id == item_id))
         return result.scalar_one_or_none()
+
+    async def dates_with_correct_task_attempts(self, user_id: int) -> set[dt.date]:
+        stmt = (
+            select(cast(TaskAttempt.created_at, Date))
+            .where(TaskAttempt.user_id == user_id, TaskAttempt.is_correct.is_(True))
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        out: set[dt.date] = set()
+        for (d,) in result.all():
+            if d is None:
+                continue
+            if isinstance(d, dt.datetime):
+                out.add(d.date())
+            elif isinstance(d, dt.date):
+                out.add(d)
+            else:
+                out.add(dt.date.fromisoformat(str(d).partition(" ")[0][:10]))
+        return out
 
     async def create_task_attempt(
         self,
@@ -134,7 +174,9 @@ class CourseRepository:
         return list(result.scalars().all())
 
     async def get_progress_map(self, user_id: int) -> dict[str, list[str]]:
-        result = await self.session.execute(select(UserProgress).where(UserProgress.user_id == user_id))
+        result = await self.session.execute(
+            select(UserProgress).where(UserProgress.user_id == user_id)
+        )
         rows = list(result.scalars().all())
         m: dict[str, list[str]] = defaultdict(list)
         for r in rows:
@@ -146,7 +188,6 @@ class CourseRepository:
         return result.scalar_one_or_none()
 
     async def list_items_course_order(self) -> list[tuple[str, str, str]]:
-        """(item_id, topic_id, item_type) in global course order (topic order, then item order)."""
         stmt = (
             select(Item.id, Item.topic_id, Item.type)
             .join(Topic, Topic.id == Item.topic_id)
@@ -156,7 +197,9 @@ class CourseRepository:
         return [(row[0], row[1], row[2]) for row in result.all()]
 
     async def mark_completed(self, user_id: int, topic_id: str, item_id: str) -> bool:
-        self.session.add(UserProgress(user_id=user_id, topic_id=topic_id, item_id=item_id))
+        self.session.add(
+            UserProgress(user_id=user_id, topic_id=topic_id, item_id=item_id)
+        )
         try:
             await self.session.commit()
             return True
@@ -174,7 +217,9 @@ class CourseRepository:
         await self.session.execute(delete(Topic).where(Topic.id == topic_id))
         await self.session.commit()
 
-    async def create_item(self, item_id: str, topic_id: str, type_: str, title: str, order: int) -> Item:
+    async def create_item(
+        self, item_id: str, topic_id: str, type_: str, title: str, order: int
+    ) -> Item:
         it = Item(id=item_id, topic_id=topic_id, type=type_, title=title, order=order)
         self.session.add(it)
         await self.session.commit()
@@ -193,13 +238,17 @@ class CourseRepository:
         src: str | None = None,
         alt: str | None = None,
     ) -> TheoryBlock:
-        b = TheoryBlock(item_id=item_id, type=type_, content=content, src=src, alt=alt, order=order)
+        b = TheoryBlock(
+            item_id=item_id, type=type_, content=content, src=src, alt=alt, order=order
+        )
         self.session.add(b)
         await self.session.commit()
         return b
 
     async def delete_theory_block(self, block_id: int) -> None:
-        await self.session.execute(delete(TheoryBlock).where(TheoryBlock.id == block_id))
+        await self.session.execute(
+            delete(TheoryBlock).where(TheoryBlock.id == block_id)
+        )
         await self.session.commit()
 
     async def create_task(self, payload: dict) -> Task:
@@ -211,7 +260,6 @@ class CourseRepository:
         )
         self.session.add(task)
         await self.session.flush()
-
         ttype = task.task_type
         if ttype == "single-choice":
             self.session.add(
@@ -223,7 +271,6 @@ class CourseRepository:
             )
             for idx, text in enumerate(payload.get("answers") or []):
                 self.session.add(TaskAnswer(task_id=task.id, order=idx, text=str(text)))
-
         elif ttype == "fill-in-blank":
             self.session.add(
                 TaskFillBlank(
@@ -232,7 +279,6 @@ class CourseRepository:
                     blank=payload["blank"],
                 )
             )
-
         elif ttype == "find-the-bug":
             self.session.add(
                 TaskFindBug(
@@ -242,8 +288,9 @@ class CourseRepository:
                 )
             )
             for idx, text in enumerate(payload.get("codeLines") or []):
-                self.session.add(TaskCodeLine(task_id=task.id, order=idx, text=str(text)))
-
+                self.session.add(
+                    TaskCodeLine(task_id=task.id, order=idx, text=str(text))
+                )
         elif ttype == "code-order":
             correct = payload.get("correctOrder")
             if correct is None:
@@ -256,8 +303,9 @@ class CourseRepository:
                 )
             )
             for idx, text in enumerate(payload.get("codeLines") or []):
-                self.session.add(TaskCodeLine(task_id=task.id, order=idx, text=str(text)))
-
+                self.session.add(
+                    TaskCodeLine(task_id=task.id, order=idx, text=str(text))
+                )
         elif ttype == "match-pairs":
             for idx, pair in enumerate(payload.get("pairs") or []):
                 self.session.add(
@@ -268,11 +316,9 @@ class CourseRepository:
                         right=str(pair["right"]),
                     )
                 )
-
         await self.session.commit()
         return task
 
     async def delete_task_by_item(self, item_id: str) -> None:
         await self.session.execute(delete(Task).where(Task.item_id == item_id))
         await self.session.commit()
-

@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 class UserCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class UserOut(BaseModel):
@@ -16,3 +16,19 @@ class UserOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class LeaderboardEntryOut(BaseModel):
+    rank: int
+    name: str
+    xp: int
+
+
+class LeaderboardTopOut(BaseModel):
+    entries: list[LeaderboardEntryOut]
+
+
+class MyXpRankOut(BaseModel):
+    rank: int
+    name: str
+    xp: int
