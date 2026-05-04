@@ -1,4 +1,4 @@
-from __future__ import annotations
+import importlib
 
-from . import users  # noqa: F401
-from . import course  # noqa: F401
+importlib.import_module("app.models.users")
+importlib.import_module("app.models.course")

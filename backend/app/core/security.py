@@ -1,11 +1,7 @@
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 from typing import Any
-
 from jose import JWTError, jwt
 from werkzeug.security import check_password_hash, generate_password_hash
-
 from app.core.config import get_settings
 
 
@@ -21,7 +17,9 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def create_access_token(subject_user_id: int, extra_claims: dict[str, Any] | None = None) -> str:
+def create_access_token(
+    subject_user_id: int, extra_claims: dict[str, Any] | None = None
+) -> str:
     settings = get_settings()
     expire = _utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
     payload: dict[str, Any] = {
@@ -31,7 +29,9 @@ def create_access_token(subject_user_id: int, extra_claims: dict[str, Any] | Non
     }
     if extra_claims:
         payload.update(extra_claims)
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
 
 
 def create_refresh_token(subject_user_id: int) -> str:
@@ -42,7 +42,9 @@ def create_refresh_token(subject_user_id: int) -> str:
         "exp": expire,
         "type": "refresh",
     }
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
 
 
 def decode_token(token: str, expected_type: str) -> dict[str, Any]:
