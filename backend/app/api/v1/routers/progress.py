@@ -10,7 +10,6 @@ router = APIRouter(prefix="/progress", tags=["progress"])
 
 
 class ProgressMarkIn(BaseModel):
-    userId: int = Field(alias="userId")
     topicId: str = Field(alias="topicId")
     itemId: str = Field(alias="itemId")
 
@@ -29,7 +28,11 @@ async def get_progress(user_id: int, service: CourseService = Depends(get_course
 
 
 @router.post("")
-async def mark_progress(body: ProgressMarkIn, service: CourseService = Depends(get_course_service)):
-    await service.mark_progress(body.userId, body.topicId, body.itemId)
+async def mark_progress(
+    body: ProgressMarkIn,
+    user_id: int = Depends(get_current_user_id),
+    service: CourseService = Depends(get_course_service),
+):
+    await service.mark_progress(user_id, body.topicId, body.itemId)
     return {"ok": True}
 

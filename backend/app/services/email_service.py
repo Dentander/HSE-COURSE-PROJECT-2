@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import smtplib
@@ -10,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _ascii_safe(text: str) -> str:
-    return text.encode("utf-8", "backslashreplace").decode("ascii")
+    return text
 
 
 def _verification_html(confirm_url: str) -> str:

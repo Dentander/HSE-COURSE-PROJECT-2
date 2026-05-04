@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, false
 from sqlalchemy.sql import func
 

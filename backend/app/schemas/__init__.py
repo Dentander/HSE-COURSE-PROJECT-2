@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .errors import ErrorResponse
 from .user import UserOut, UserCreate
 from .course import TopicOut  # noqa: F401

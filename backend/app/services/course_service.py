@@ -277,7 +277,6 @@ class CourseService:
         return SubmitOut(isCorrect=False, message="Incorrect", rewardXp=0)
 
     async def submit_single_choice(self, user_id: int, item_id: str, body: SubmitSingleChoiceIn) -> SubmitOut:
-        await self.assert_task_unlocked(user_id, item_id)
         item, task = await self._task_item_and_task(item_id)
         if task.task_type != TaskType.SINGLE_CHOICE.value:
             raise HTTPException(400, "Task type mismatch")
@@ -290,7 +289,6 @@ class CourseService:
         return await self._persist_task_attempt(user_id, item, task, answer, is_correct)
 
     async def submit_fill_in_blank(self, user_id: int, item_id: str, body: SubmitFillBlankIn) -> SubmitOut:
-        await self.assert_task_unlocked(user_id, item_id)
         item, task = await self._task_item_and_task(item_id)
         if task.task_type != TaskType.FILL_IN_BLANK.value:
             raise HTTPException(400, "Task type mismatch")
@@ -303,7 +301,6 @@ class CourseService:
         return await self._persist_task_attempt(user_id, item, task, answer, is_correct)
 
     async def submit_find_the_bug(self, user_id: int, item_id: str, body: SubmitFindBugIn) -> SubmitOut:
-        await self.assert_task_unlocked(user_id, item_id)
         item, task = await self._task_item_and_task(item_id)
         if task.task_type != TaskType.FIND_THE_BUG.value:
             raise HTTPException(400, "Task type mismatch")
@@ -316,7 +313,6 @@ class CourseService:
         return await self._persist_task_attempt(user_id, item, task, answer, is_correct)
 
     async def submit_code_order(self, user_id: int, item_id: str, body: SubmitCodeOrderIn) -> SubmitOut:
-        await self.assert_task_unlocked(user_id, item_id)
         item, task = await self._task_item_and_task(item_id)
         if task.task_type != TaskType.CODE_ORDER.value:
             raise HTTPException(400, "Task type mismatch")
@@ -333,7 +329,6 @@ class CourseService:
         return await self._persist_task_attempt(user_id, item, task, answer, is_correct)
 
     async def submit_match_pairs(self, user_id: int, item_id: str, body: SubmitMatchPairsIn) -> SubmitOut:
-        await self.assert_task_unlocked(user_id, item_id)
         item, task = await self._task_item_and_task(item_id)
         if task.task_type != TaskType.MATCH_PAIRS.value:
             raise HTTPException(400, "Task type mismatch")

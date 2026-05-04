@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -54,6 +56,8 @@ class AuthService:
         user = await self.user_repo.get_user_by_email(email.lower().strip())
         if not user or not verify_password(password, user.password_hash):
             raise HTTPException(status_code=401, detail="Incorrect email or password")
+        if not user.email_verified:
+            raise HTTPException(status_code=403, detail="Email не подтверждён. Проверьте почту.")
         return self._tokens_for_user(user.user_id)
 
     async def refresh(self, refresh_token: str) -> TokenPair:
