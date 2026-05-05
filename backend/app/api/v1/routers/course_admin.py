@@ -1,10 +1,39 @@
-from typing import Literal
-from pydantic import BaseModel, Field
+from importlib import util
+from pathlib import Path
+from typing import Any, Literal
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+
 from app.api.v1.dependencies import get_course_service
 from app.services.course_service import CourseService
 
 router = APIRouter(prefix="/course/admin", tags=["course-admin"])
+
+
+def _sharpik_course_file() -> Path:
+    backend_root = Path(__file__).resolve().parents[4]
+    candidates = [
+        backend_root / "course_content" / "sharpik_course.py",
+        backend_root / "scripts" / "coursecontent" / "sharpik_course.py",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+    raise RuntimeError(
+        "sharpik_course.py not found. Expected one of: "
+        + ", ".join(str(p) for p in candidates)
+    )
+
+
+def _load_sharpik_course_topics() -> list[dict]:
+    path = _sharpik_course_file()
+    spec = util.spec_from_file_location("sharpik_course", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load sharpik course from {path}")
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return list(module.COURSE_SHARPIK)
 
 
 class TopicCreateIn(BaseModel):
@@ -66,6 +95,28 @@ class TaskMatchPairsCreateIn(TaskBaseIn):
         order: int | None = None
 
     pairs: list[PairIn]
+
+
+class ReplaceEntireCourseIn(BaseModel):
+    topics: list[dict[str, Any]]
+
+
+@router.post("/replace-entire-course")
+async def replace_entire_course(
+    body: ReplaceEntireCourseIn,
+    service: CourseService = Depends(get_course_service),
+):
+    n = await service.admin_replace_entire_course(body.topics)
+    return {"ok": True, "topicsLoaded": n}
+
+
+@router.post("/replace-with-sharpik-course")
+async def replace_with_sharpik_course(
+    service: CourseService = Depends(get_course_service),
+):
+    topics = _load_sharpik_course_topics()
+    n = await service.admin_replace_entire_course(topics)
+    return {"ok": True, "topicsLoaded": n, "source": "course_content/sharpik_course.py"}
 
 
 @router.post("/topics")

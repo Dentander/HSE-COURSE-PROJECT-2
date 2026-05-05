@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+
 from app.api.v1.dependencies import get_course_service
 from app.schemas.course import TopicOut
 from app.services.course_service import CourseService

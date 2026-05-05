@@ -9,3 +9,4 @@ python-jose[cryptography]
 python-multipart
 typing_extensions
 python-dotenv
+psycopg
