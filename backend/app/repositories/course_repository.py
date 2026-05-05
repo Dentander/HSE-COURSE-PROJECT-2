@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 from collections import defaultdict
-from sqlalchemy import Date, cast, delete, select
+from sqlalchemy import Date, cast, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from app.models.course import (
@@ -173,6 +173,18 @@ class CourseRepository:
         )
         return list(result.scalars().all())
 
+    async def count_incorrect_attempts(self, user_id: int, item_id: str) -> int:
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(TaskAttempt)
+            .where(
+                TaskAttempt.user_id == user_id,
+                TaskAttempt.item_id == item_id,
+                TaskAttempt.is_correct.is_(False),
+            )
+        )
+        return int(result.scalar_one() or 0)
+
     async def get_progress_map(self, user_id: int) -> dict[str, list[str]]:
         result = await self.session.execute(
             select(UserProgress).where(UserProgress.user_id == user_id)
@@ -215,6 +227,10 @@ class CourseRepository:
 
     async def delete_topic(self, topic_id: str) -> None:
         await self.session.execute(delete(Topic).where(Topic.id == topic_id))
+        await self.session.commit()
+
+    async def delete_all_topics(self) -> None:
+        await self.session.execute(delete(Topic))
         await self.session.commit()
 
     async def create_item(

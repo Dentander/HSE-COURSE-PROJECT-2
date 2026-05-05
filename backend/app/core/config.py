@@ -48,6 +48,13 @@ class Settings:
         self.password_reset_token_hours: int = int(
             os.getenv("PASSWORD_RESET_TOKEN_HOURS", "24")
         )
+        self.task_reward_xp_penalty_per_wrong_attempt: int = max(
+            0,
+            int(os.getenv("TASK_REWARD_XP_PENALTY_PER_WRONG_ATTEMPT", "1")),
+        )
+        self.task_reward_xp_floor: int = max(
+            0, int(os.getenv("TASK_REWARD_XP_FLOOR", "0"))
+        )
 
 
 @lru_cache

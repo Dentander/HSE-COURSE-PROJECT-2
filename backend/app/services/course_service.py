@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from fastapi import HTTPException
+from app.core.config import Settings, get_settings
 from app.models.course import Item, ItemType, Task, TaskType
 from app.repositories.course_repository import CourseRepository
 from app.repositories.user_repository import UserRepository
@@ -17,6 +18,7 @@ from app.schemas.tasks import (
     SubmitSingleChoiceIn,
     TaskAttemptOut,
     TaskGetOut,
+    TaskMyRewardXpOut,
 )
 
 
@@ -39,9 +41,24 @@ def _compute_consecutive_days_with_correct_task(
 
 
 class CourseService:
-    def __init__(self, repo: CourseRepository, user_repo: UserRepository | None = None):
+    def __init__(
+        self,
+        repo: CourseRepository,
+        user_repo: UserRepository | None = None,
+        settings: Settings | None = None,
+    ):
         self.repo = repo
         self.user_repo = user_repo
+        self.settings = settings or get_settings()
+
+    def _effective_task_reward_xp(
+        self, base_xp: int, incorrect_attempts: int
+    ) -> int:
+        base = max(0, int(base_xp))
+        wrong = max(0, int(incorrect_attempts))
+        raw = base - wrong * self.settings.task_reward_xp_penalty_per_wrong_attempt
+        merged = max(self.settings.task_reward_xp_floor, raw)
+        return max(0, min(base, merged))
 
     async def _load_task_details(self, task_ids: list[int]) -> dict[str, dict]:
         single_choice = await self.repo.list_task_single_choice(task_ids)
@@ -111,6 +128,21 @@ class CourseService:
             raise HTTPException(404, "Task not found")
         details = await self._load_task_details([task.id])
         return self._build_task_out(item, task, details)
+
+    async def get_my_personal_task_reward_xp(
+        self, user_id: int, item_id: str
+    ) -> TaskMyRewardXpOut:
+        item = await self.repo.get_item(item_id)
+        if not item:
+            raise HTTPException(404, "Item not found")
+        if item.type != ItemType.TASK.value:
+            raise HTTPException(400, "Item is not a task")
+        task = await self.repo.get_task_by_item_id(item_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        incorrect = await self.repo.count_incorrect_attempts(user_id, item_id)
+        xp = self._effective_task_reward_xp(task.reward_xp or 0, incorrect)
+        return TaskMyRewardXpOut(itemId=item.id, rewardXp=xp)
 
     async def get_course(self) -> list[TopicOut]:
         topics = await self.repo.list_topics()
@@ -315,6 +347,15 @@ class CourseService:
         answer: dict[str, Any],
         is_correct: bool,
     ) -> SubmitOut:
+        base_xp = task.reward_xp or 0
+        incorrect_before = 0
+        if is_correct:
+            incorrect_before = await self.repo.count_incorrect_attempts(
+                user_id, item.id
+            )
+        reward_on_success = self._effective_task_reward_xp(
+            base_xp, incorrect_before
+        )
         await self.repo.create_task_attempt(
             user_id=user_id,
             item_id=item.id,
@@ -323,13 +364,14 @@ class CourseService:
             is_correct=is_correct,
         )
         if is_correct:
-            reward = task.reward_xp or 0
             newly_completed = await self.repo.mark_completed(
                 user_id, item.topic_id, item.id
             )
-            if newly_completed and reward > 0 and self.user_repo is not None:
-                await self.user_repo.add_xp(user_id, reward)
-            return SubmitOut(isCorrect=True, message="Correct", rewardXp=reward)
+            if newly_completed and reward_on_success > 0 and self.user_repo is not None:
+                await self.user_repo.add_xp(user_id, reward_on_success)
+            return SubmitOut(
+                isCorrect=True, message="Correct", rewardXp=reward_on_success
+            )
         return SubmitOut(isCorrect=False, message="Incorrect", rewardXp=0)
 
     async def submit_single_choice(
@@ -462,3 +504,67 @@ class CourseService:
 
     async def admin_delete_task(self, item_id: str):
         await self.repo.delete_task_by_item(item_id)
+
+    async def admin_wipe_all_topics(self) -> None:
+        await self.repo.delete_all_topics()
+
+    def _declarative_task_payload(self, item: dict) -> dict[str, Any]:
+        tt = item["taskType"]
+        base: dict[str, Any] = {
+            "itemId": item["id"],
+            "taskType": tt,
+            "npcText": item.get("npcText", "") or "",
+            "rewardXp": int(item.get("rewardXp") or 0),
+        }
+        if tt == "single-choice":
+            base["question"] = item["question"]
+            base["answers"] = item["answers"]
+            base["correctIndex"] = item["correctIndex"]
+        elif tt == "fill-in-blank":
+            base["codeTemplate"] = item["codeTemplate"]
+            base["blank"] = item["blank"]
+        elif tt == "find-the-bug":
+            base["bugLineIndex"] = item["bugLineIndex"]
+            base["explanation"] = item.get("explanation", "") or ""
+            base["codeLines"] = item["codeLines"]
+        elif tt == "code-order":
+            base["description"] = item.get("description", "") or ""
+            base["codeLines"] = item["codeLines"]
+            if item.get("correctOrder") is not None:
+                base["correctOrder"] = item["correctOrder"]
+        elif tt == "match-pairs":
+            pairs = item.get("pairs") or []
+            base["pairs"] = [
+                {"left": p["left"], "right": p["right"], "order": int(p.get("order", pi))}
+                for pi, p in enumerate(pairs)
+            ]
+        else:
+            raise HTTPException(400, f"Unsupported taskType: {tt}")
+        return base
+
+    async def admin_publish_course_topics(self, topics: list[dict]) -> int:
+        for ti, topic in enumerate(topics):
+            await self.admin_create_topic(topic["id"], topic["title"], ti)
+            for ii, item in enumerate(topic["items"]):
+                await self.admin_create_item(
+                    item["id"], topic["id"], item["type"], item["title"], ii
+                )
+                if item["type"] == "lesson":
+                    for bi, block in enumerate(item.get("theoryBlocks", [])):
+                        await self.admin_create_theory_block(
+                            item["id"],
+                            block["type"],
+                            block.get("content", ""),
+                            bi,
+                            block.get("src"),
+                            block.get("alt"),
+                        )
+                elif item["type"] == "task":
+                    await self.admin_create_task(self._declarative_task_payload(item))
+                else:
+                    raise HTTPException(400, f"Unsupported item type: {item['type']}")
+        return len(topics)
+
+    async def admin_replace_entire_course(self, topics: list[dict]) -> int:
+        await self.repo.delete_all_topics()
+        return await self.admin_publish_course_topics(topics)

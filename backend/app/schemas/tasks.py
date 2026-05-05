@@ -7,6 +7,11 @@ TaskType = Literal[
 ]
 
 
+class TaskMyRewardXpOut(BaseModel):
+    itemId: str
+    rewardXp: int
+
+
 class TaskGetOut(BaseModel):
     itemId: str
     title: str

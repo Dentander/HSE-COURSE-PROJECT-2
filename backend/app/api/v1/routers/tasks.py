@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+
 from app.api.v1.dependencies import get_course_service, get_current_user_id
 from app.schemas.tasks import (
     SubmitCodeOrderIn,
@@ -9,10 +10,20 @@ from app.schemas.tasks import (
     SubmitSingleChoiceIn,
     TaskAttemptOut,
     TaskGetOut,
+    TaskMyRewardXpOut,
 )
 from app.services.course_service import CourseService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+@router.get("/{item_id}/my-reward-xp", response_model=TaskMyRewardXpOut)
+async def get_my_personal_task_reward_xp(
+    item_id: str,
+    user_id: int = Depends(get_current_user_id),
+    service: CourseService = Depends(get_course_service),
+):
+    return await service.get_my_personal_task_reward_xp(user_id, item_id)
 
 
 @router.get("/{item_id}", response_model=TaskGetOut)
