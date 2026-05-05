@@ -55,6 +55,10 @@ class Settings:
         self.task_reward_xp_floor: int = max(
             0, int(os.getenv("TASK_REWARD_XP_FLOOR", "0"))
         )
+        self.course_admin_email: str = (os.getenv("COURSE_ADMIN_EMAIL") or "").strip()
+        self.course_admin_password: str = (
+            os.getenv("COURSE_ADMIN_PASSWORD") or ""
+        ).strip()
 
 
 @lru_cache

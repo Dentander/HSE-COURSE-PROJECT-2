@@ -1,6 +1,8 @@
+import secrets
 from typing import Annotated
+
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import decode_token, get_user_id_from_token_payload
 from app.core.config import get_settings
@@ -13,6 +15,40 @@ from app.services.email_service import EmailService
 from app.services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+_http_basic_course_admin = HTTPBasic(auto_error=False)
+
+
+async def require_course_admin_basic(
+    credentials: Annotated[
+        HTTPBasicCredentials | None, Depends(_http_basic_course_admin)
+    ],
+) -> None:
+    settings = get_settings()
+    expected_email = settings.course_admin_email
+    expected_password = settings.course_admin_password
+    if not expected_email or not expected_password:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Course admin is not configured (set COURSE_ADMIN_EMAIL and COURSE_ADMIN_PASSWORD).",
+        )
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    user_ok = secrets.compare_digest(
+        credentials.username.strip().lower(),
+        expected_email.lower(),
+    )
+    pass_ok = secrets.compare_digest(credentials.password, expected_password)
+    if not (user_ok and pass_ok):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
 
 
 async def get_db_session(db: AsyncSession = Depends(get_db)):

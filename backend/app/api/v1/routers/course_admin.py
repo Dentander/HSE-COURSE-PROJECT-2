@@ -5,10 +5,14 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.api.v1.dependencies import get_course_service
+from app.api.v1.dependencies import get_course_service, require_course_admin_basic
 from app.services.course_service import CourseService
 
-router = APIRouter(prefix="/course/admin", tags=["course-admin"])
+router = APIRouter(
+    prefix="/course/admin",
+    tags=["course-admin"],
+    dependencies=[Depends(require_course_admin_basic)],
+)
 
 
 def _sharpik_course_file() -> Path:
