@@ -1,8 +1,22 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DailyCorrectTaskStreakOut(BaseModel):
-    consecutive_days: int
+    model_config = ConfigDict(populate_by_name=True)
+
+    consecutive_days: int = Field(serialization_alias="consecutiveDays")
+    is_fire_frozen: bool = Field(serialization_alias="isFireFrozen")
+    streak_updated: bool = Field(
+        default=False, serialization_alias="streakUpdated"
+    )
+
+
+class TopicStoryTasksProgressOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    topic_id: str = Field(serialization_alias="topicId")
+    completed_story_tasks: int = Field(serialization_alias="completedStoryTasks")
+    total_story_tasks: int = Field(serialization_alias="totalStoryTasks")
 
 
 class TopicTasksProgressOut(BaseModel):

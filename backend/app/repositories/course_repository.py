@@ -135,6 +135,30 @@ class CourseRepository:
         )
         return list(result.scalars().all())
 
+    async def list_story_task_item_ids(self) -> list[str]:
+        result = await self.session.execute(
+            select(Task.item_id).where(Task.kind == "story")
+        )
+        return [row[0] for row in result.all()]
+
+    async def count_story_tasks_in_topic(self, topic_id: str) -> int:
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(Task)
+            .join(Item, Item.id == Task.item_id)
+            .where(Item.topic_id == topic_id, Task.kind == "story")
+        )
+        return int(result.scalar_one() or 0)
+
+    async def list_story_task_item_ids_for_topic(self, topic_id: str) -> list[str]:
+        result = await self.session.execute(
+            select(Task.item_id)
+            .join(Item, Item.id == Task.item_id)
+            .where(Item.topic_id == topic_id, Task.kind == "story")
+            .order_by(Item.order)
+        )
+        return [row[0] for row in result.all()]
+
     async def get_task_by_item_id(self, item_id: str) -> Task | None:
         result = await self.session.execute(select(Task).where(Task.item_id == item_id))
         return result.scalar_one_or_none()
@@ -265,9 +289,19 @@ class CourseRepository:
         order: int,
         src: str | None = None,
         alt: str | None = None,
+        page_kind: str | None = None,
     ) -> TheoryBlock:
+        pk = (page_kind or "theory").strip().lower()
+        if pk not in ("theory", "story"):
+            pk = "theory"
         b = TheoryBlock(
-            item_id=item_id, type=type_, content=content, src=src, alt=alt, order=order
+            item_id=item_id,
+            type=type_,
+            content=content,
+            src=src,
+            alt=alt,
+            order=order,
+            page_kind=pk,
         )
         self.session.add(b)
         await self.session.commit()
@@ -285,6 +319,7 @@ class CourseRepository:
             task_type=payload["taskType"],
             npc_text=payload.get("npcText") or "",
             reward_xp=int(payload.get("rewardXp") or 0),
+            kind=str(payload.get("kind") or "side"),
         )
         self.session.add(task)
         await self.session.flush()

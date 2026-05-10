@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends
 from app.schemas import LeaderboardTopOut, MyXpRankOut, UserOut
 from app.services.user_service import UserService
@@ -8,9 +10,12 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("/leaderboard", response_model=LeaderboardTopOut)
 async def get_xp_leaderboard_top(
+    sort: Literal["xp", "fire"] = "xp",
     service: UserService = Depends(get_user_service),
 ):
-    return await service.get_leaderboard_top(limit=30)
+    return await service.get_leaderboard_top(
+        limit=30, sort_by_fire=(sort == "fire")
+    )
 
 
 @router.get("/me", response_model=UserOut)

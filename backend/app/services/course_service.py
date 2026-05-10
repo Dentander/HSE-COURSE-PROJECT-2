@@ -60,7 +60,8 @@ class CourseService:
     ) -> int:
         base = max(0, int(base_xp))
         wrong = max(0, int(incorrect_attempts))
-        raw = base - wrong * self.settings.task_reward_xp_penalty_per_wrong_attempt
+        penalty = (base + 2) // 3 if base > 0 else 0
+        raw = base - wrong * penalty
         merged = max(self.settings.task_reward_xp_floor, raw)
         return max(0, min(base, merged))
 
@@ -101,6 +102,7 @@ class CourseService:
             title=item.title,
             order=item.order,
             taskType=task.task_type,
+            isStoryTask=(getattr(task, "kind", None) or "side") == "story",
             npcText=task.npc_text or "",
             rewardXp=task.reward_xp or 0,
         )
@@ -156,7 +158,10 @@ class CourseService:
         xp = self._effective_task_reward_xp(task.reward_xp or 0, incorrect)
         return TaskMyRewardXpOut(itemId=item.id, rewardXp=xp)
 
-    async def get_course(self) -> list[TopicOut]:
+    async def get_course(self, user_id: int | None = None) -> list[TopicOut]:
+        open_ids: set[str] | None = None
+        if user_id is not None:
+            open_ids = await self._open_topic_ids_for_user(user_id)
         topics = await self.repo.list_topics()
         topic_ids = [t.id for t in topics]
         items = await self.repo.list_items_for_topics(topic_ids)
@@ -173,6 +178,7 @@ class CourseService:
             block_type = {"string": "text"}.get(raw_type, raw_type)
             if block_type not in allowed_block_types:
                 block_type = "text"
+            pk = str(getattr(b, "page_kind", "") or "theory").strip().lower()
             theory_by_item[b.item_id].append(
                 TheoryBlockOut(
                     type=block_type,
@@ -180,6 +186,7 @@ class CourseService:
                     src=b.src,
                     alt=b.alt,
                     order=b.order,
+                    isStoryPage=(pk == "story"),
                 )
             )
         items_by_topic: dict[str, list] = defaultdict(list)
@@ -210,6 +217,7 @@ class CourseService:
                     title=t.title,
                     order=t.order,
                     items=items_by_topic.get(t.id, []),
+                    isOpen=(t.id in open_ids) if open_ids is not None else None,
                 )
             )
         return result
@@ -258,10 +266,94 @@ class CourseService:
     async def get_daily_correct_task_streak(
         self, user_id: int
     ) -> DailyCorrectTaskStreakOut:
+        if self.user_repo is None:
+            days = await self.repo.dates_with_correct_task_attempts(user_id)
+            today_utc = datetime.now(timezone.utc).date()
+            n = _compute_consecutive_days_with_correct_task(
+                days, today_utc=today_utc
+            )
+            return DailyCorrectTaskStreakOut(
+                consecutive_days=n,
+                is_fire_frozen=False,
+                streak_updated=False,
+            )
+        user = await self.user_repo.get_user_by_id(user_id)
+        if user and user.is_fire_frozen:
+            return DailyCorrectTaskStreakOut(
+                consecutive_days=int(user.fire_streak or 0),
+                is_fire_frozen=True,
+                streak_updated=False,
+            )
         days = await self.repo.dates_with_correct_task_attempts(user_id)
         today_utc = datetime.now(timezone.utc).date()
         n = _compute_consecutive_days_with_correct_task(days, today_utc=today_utc)
-        return DailyCorrectTaskStreakOut(consecutive_days=n)
+        return DailyCorrectTaskStreakOut(
+            consecutive_days=n,
+            is_fire_frozen=False,
+            streak_updated=False,
+        )
+
+    async def _open_topic_ids_for_user(self, user_id: int) -> set[str]:
+        topics = sorted(await self.repo.list_topics(), key=lambda x: x.order)
+        if not topics:
+            return set()
+        topic_ids = [t.id for t in topics]
+        items = await self.repo.list_items_for_topics(topic_ids)
+        tasks_by_topic: dict[str, list[str]] = {t.id: [] for t in topics}
+        for it in items:
+            if it.type == ItemType.TASK.value:
+                tasks_by_topic[it.topic_id].append(it.id)
+        progress = await self.repo.get_progress_map(user_id)
+        done = {i for xs in progress.values() for i in xs}
+        open_ids: set[str] = set()
+        for i, t in enumerate(topics):
+            prev_ok = True
+            for j in range(i):
+                for tid in tasks_by_topic[topics[j].id]:
+                    if tid not in done:
+                        prev_ok = False
+                        break
+                if not prev_ok:
+                    break
+            if prev_ok:
+                open_ids.add(t.id)
+        return open_ids
+
+    async def _live_fire_streak_compute(self, user_id: int) -> int:
+        days = await self.repo.dates_with_correct_task_attempts(user_id)
+        today_utc = datetime.now(timezone.utc).date()
+        return _compute_consecutive_days_with_correct_task(
+            days, today_utc=today_utc
+        )
+
+    async def _maybe_freeze_fire_if_all_story_done(self, user_id: int) -> None:
+        if not self.user_repo:
+            return
+        user = await self.user_repo.get_user_by_id(user_id)
+        if not user or user.is_fire_frozen:
+            return
+        ids = await self.repo.list_story_task_item_ids()
+        if not ids:
+            return
+        progress = await self.repo.get_progress_map(user_id)
+        done = {i for xs in progress.values() for i in xs}
+        if not all(i in done for i in ids):
+            return
+        v = await self._live_fire_streak_compute(user_id)
+        await self.user_repo.freeze_fire_streak(user_id, v)
+
+    async def get_topic_story_tasks_progress(self, user_id: int, topic_id: str):
+        from app.schemas.progress import TopicStoryTasksProgressOut
+
+        ids = await self.repo.list_story_task_item_ids_for_topic(topic_id)
+        progress = await self.repo.get_progress_map(user_id)
+        done = {i for xs in progress.values() for i in xs}
+        n_done = sum(1 for i in ids if i in done)
+        return TopicStoryTasksProgressOut(
+            topic_id=topic_id,
+            completed_story_tasks=n_done,
+            total_story_tasks=len(ids),
+        )
 
     async def assert_task_unlocked(self, user_id: int, item_id: str) -> None:
         item = await self.repo.get_item(item_id)
@@ -301,6 +393,7 @@ class CourseService:
             itemId=task_out.id,
             title=task_out.title,
             taskType=task_out.taskType,
+            isStoryTask=task_out.isStoryTask,
             npcText=task_out.npcText,
             rewardXp=task_out.rewardXp,
             question=task_out.question,
@@ -374,6 +467,11 @@ class CourseService:
         reward_on_success = self._effective_task_reward_xp(
             base_xp, incorrect_before
         )
+        before_fire: int | None = None
+        if is_correct and self.user_repo is not None:
+            u0 = await self.user_repo.get_user_by_id(user_id)
+            if u0 and not u0.is_fire_frozen:
+                before_fire = await self._live_fire_streak_compute(user_id)
         await self.repo.create_task_attempt(
             user_id=user_id,
             item_id=item.id,
@@ -381,16 +479,33 @@ class CourseService:
             answer_json=json.dumps(answer, ensure_ascii=False),
             is_correct=is_correct,
         )
+        streak_updated = False
         if is_correct:
             newly_completed = await self.repo.mark_completed(
                 user_id, item.topic_id, item.id
             )
             if newly_completed and reward_on_success > 0 and self.user_repo is not None:
                 await self.user_repo.add_xp(user_id, reward_on_success)
+            if (
+                newly_completed
+                and self.user_repo is not None
+                and before_fire is not None
+            ):
+                u1 = await self.user_repo.get_user_by_id(user_id)
+                if u1 and not u1.is_fire_frozen:
+                    after = await self._live_fire_streak_compute(user_id)
+                    await self.user_repo.set_fire_streak(user_id, after)
+                    streak_updated = after != before_fire
+                    await self._maybe_freeze_fire_if_all_story_done(user_id)
             return SubmitOut(
-                isCorrect=True, message="Correct", rewardXp=reward_on_success
+                isCorrect=True,
+                message="Correct",
+                rewardXp=reward_on_success,
+                streakUpdated=streak_updated,
             )
-        return SubmitOut(isCorrect=False, message="Incorrect", rewardXp=0)
+        return SubmitOut(
+            isCorrect=False, message="Incorrect", rewardXp=0, streakUpdated=False
+        )
 
     async def submit_single_choice(
         self, user_id: int, item_id: str, body: SubmitSingleChoiceIn
@@ -688,9 +803,16 @@ class CourseService:
         order: int,
         src: str | None,
         alt: str | None,
+        page_kind: str | None = None,
     ):
         return await self.repo.create_theory_block(
-            item_id=item_id, type_=type_, content=content, order=order, src=src, alt=alt
+            item_id=item_id,
+            type_=type_,
+            content=content,
+            order=order,
+            src=src,
+            alt=alt,
+            page_kind=page_kind,
         )
 
     async def admin_delete_theory_block(self, block_id: int):
@@ -712,6 +834,7 @@ class CourseService:
             "taskType": tt,
             "npcText": item.get("npcText", "") or "",
             "rewardXp": int(item.get("rewardXp") or 0),
+            "kind": item.get("kind") or "side",
         }
         if tt == "single-choice":
             base["question"] = item["question"]
@@ -758,6 +881,7 @@ class CourseService:
                             bi,
                             block.get("src"),
                             block.get("alt"),
+                            page_kind=block.get("pageKind") or block.get("page_kind"),
                         )
                 elif item["type"] == "task":
                     await self.admin_create_task(self._declarative_task_payload(item))

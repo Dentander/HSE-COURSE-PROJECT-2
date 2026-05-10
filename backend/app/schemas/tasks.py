@@ -21,6 +21,7 @@ class TaskGetOut(BaseModel):
     itemId: str
     title: str
     taskType: TaskType
+    isStoryTask: bool = False
     npcText: str = ""
     rewardXp: int = 0
     question: str | None = None
@@ -94,6 +95,7 @@ class SubmitOut(BaseModel):
     isCorrect: bool
     message: str
     rewardXp: int = 0
+    streakUpdated: bool = False
 
 
 class TaskAttemptOut(BaseModel):

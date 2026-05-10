@@ -3,9 +3,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.v1.dependencies import get_course_service, require_course_admin_basic
+from app.api.v1.dependencies import (
+    get_course_service,
+    require_course_admin_basic,
+)
 from app.services.course_service import CourseService
 
 router = APIRouter(
@@ -55,18 +58,24 @@ class ItemCreateIn(BaseModel):
 
 
 class TheoryBlockCreateIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     itemId: str = Field(alias="itemId")
     type: Literal["title", "subtitle", "text", "code", "image"]
     content: str
     order: int
     src: str | None = None
     alt: str | None = None
+    pageKind: Literal["theory", "story"] | None = None
 
 
 class TaskBaseIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     itemId: str = Field(alias="itemId")
     npcText: str | None = Field(default=None, alias="npcText")
     rewardXp: int | None = Field(default=None, alias="rewardXp")
+    kind: Literal["story", "side"] | None = None
 
 
 class TaskSingleChoiceCreateIn(TaskBaseIn):
@@ -177,7 +186,13 @@ async def create_theory_block(
     body: TheoryBlockCreateIn, service: CourseService = Depends(get_course_service)
 ):
     b = await service.admin_create_theory_block(
-        body.itemId, body.type, body.content, body.order, body.src, body.alt
+        body.itemId,
+        body.type,
+        body.content,
+        body.order,
+        body.src,
+        body.alt,
+        page_kind=body.pageKind,
     )
     return {"id": b.id}
 

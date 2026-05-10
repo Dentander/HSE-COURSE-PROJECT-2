@@ -10,6 +10,10 @@ class Users(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     xp = Column(Integer, default=0)
+    fire_streak = Column(Integer, nullable=False, default=0, server_default="0")
+    is_fire_frozen = Column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
     email_verified = Column(
         Boolean, nullable=False, default=False, server_default=false()
     )

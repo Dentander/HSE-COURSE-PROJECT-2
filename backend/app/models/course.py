@@ -91,6 +91,7 @@ class TheoryBlock(Base):
     src: Mapped[str | None] = mapped_column(Text, nullable=True)
     alt: Mapped[str | None] = mapped_column(Text, nullable=True)
     order: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    page_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="theory")
     item: Mapped[Item] = relationship("Item", back_populates="theory_blocks")
 
 
@@ -107,6 +108,7 @@ class Task(Base):
     task_type: Mapped[str] = mapped_column(String(30), nullable=False)
     npc_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     reward_xp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="side")
     item: Mapped[Item] = relationship("Item", back_populates="task")
     single_choice: Mapped[Optional["TaskSingleChoice"]] = relationship(
         "TaskSingleChoice",
