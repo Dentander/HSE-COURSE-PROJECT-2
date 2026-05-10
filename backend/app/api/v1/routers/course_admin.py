@@ -101,6 +101,15 @@ class TaskMatchPairsCreateIn(TaskBaseIn):
     pairs: list[PairIn]
 
 
+class TaskCodeWithTestsCreateIn(TaskBaseIn):
+    class TestCaseIn(BaseModel):
+        input: str
+        output: str
+
+    codeTemplate: str = Field(default="", alias="codeTemplate")
+    tests: list[TestCaseIn]
+
+
 class ReplaceEntireCourseIn(BaseModel):
     topics: list[dict[str, Any]]
 
@@ -236,6 +245,18 @@ async def create_task_match_pairs(
 ):
     payload = body.model_dump(by_alias=True, exclude_none=True) | {
         "taskType": "match-pairs"
+    }
+    task = await service.admin_create_task(payload)
+    return {"id": task.id, "itemId": task.item_id, "taskType": task.task_type}
+
+
+@router.post("/tasks/code-with-tests")
+async def create_task_code_with_tests(
+    body: TaskCodeWithTestsCreateIn,
+    service: CourseService = Depends(get_course_service),
+):
+    payload = body.model_dump(by_alias=True, exclude_none=True) | {
+        "taskType": "code-with-tests",
     }
     task = await service.admin_create_task(payload)
     return {"id": task.id, "itemId": task.item_id, "taskType": task.task_type}

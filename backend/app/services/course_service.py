@@ -4,18 +4,22 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from fastapi import HTTPException
 from app.core.config import Settings, get_settings
-from app.models.course import Item, ItemType, Task, TaskType
+from app.models.course import Item, ItemType, Task, TaskAttempt, TaskType
 from app.repositories.course_repository import CourseRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.course import LessonItemOut, TaskItemOut, TheoryBlockOut, TopicOut
 from app.schemas.progress import DailyCorrectTaskStreakOut, MyTasksProgressOut, TopicTasksProgressOut
 from app.schemas.tasks import (
     SubmitCodeOrderIn,
+    SubmitCodeWithTestsIn,
     SubmitFillBlankIn,
     SubmitFindBugIn,
     SubmitMatchPairsIn,
     SubmitOut,
     SubmitSingleChoiceIn,
+    CodeRunJobStatusOut,
+    CodeWithTestsResultsOut,
+    CodeWithTestsVerdictSnapshot,
     TaskAttemptOut,
     TaskGetOut,
     TaskMyRewardXpOut,
@@ -73,10 +77,14 @@ class CourseService:
             "fill_blank": {r.task_id: r for r in fill_blank},
             "find_bug": {r.task_id: r for r in find_bug},
             "code_order": {r.task_id: r for r in code_order},
+            "code_with_tests": {},
             "answers": defaultdict(list),
             "code_lines": defaultdict(list),
             "pairs": defaultdict(list),
         }
+        code_with_tests = await self.repo.list_task_code_with_tests(task_ids)
+        for row in code_with_tests:
+            details["code_with_tests"][row.task_id] = row
         for a in answers:
             details["answers"][a.task_id].append(a.text)
         for line_row in code_lines:
@@ -115,6 +123,10 @@ class CourseService:
             pairs_for_task = details["pairs"].get(task_id, [])
             out.leftItems = [p["left"] for p in pairs_for_task]
             out.rightItems = [p["right"] for p in pairs_for_task]
+        elif task.task_type == TaskType.CODE_WITH_TESTS.value:
+            cwt = details["code_with_tests"].get(task_id)
+            if cwt:
+                out.codeTemplate = cwt.code_template or ""
         return out
 
     async def _get_task_item_out(self, item_id: str) -> TaskItemOut:
@@ -330,6 +342,12 @@ class CourseService:
             raise HTTPException(400, "Task type mismatch")
         return out
 
+    async def get_code_with_tests_task(self, item_id: str) -> TaskGetOut:
+        out = await self.get_task(item_id)
+        if out.taskType != TaskType.CODE_WITH_TESTS.value:
+            raise HTTPException(400, "Task type mismatch")
+        return out
+
     async def _task_item_and_task(self, item_id: str) -> tuple[Item, Task]:
         item = await self.repo.get_item(item_id)
         if not item or item.type != ItemType.TASK.value:
@@ -469,6 +487,185 @@ class CourseService:
             )
         return out
 
+    _CODE_VERDICT_LABELS = {
+        "OK": "Принято (OK)",
+        "WA": "Неверный ответ (WA)",
+        "RE": "Ошибка времени выполнения (RE)",
+        "TL": "Превышен лимит времени (TL)",
+        "ML": "Превышен лимит памяти (ML)",
+        "CE": "Ошибка компиляции или запуска (CE)",
+    }
+
+    _CODE_VERDICT_RANK: dict[str, int] = {
+        "OK": 0,
+        "WA": 1,
+        "RE": 2,
+        "TL": 3,
+        "ML": 4,
+        "CE": 5,
+    }
+
+    @staticmethod
+    def _verdict_rank(verdict: str) -> int:
+        return CourseService._CODE_VERDICT_RANK.get(
+            (verdict or "").strip().upper(), 99
+        )
+
+    @staticmethod
+    def _verdict_from_attempt_row(row: TaskAttempt) -> tuple[str, str]:
+        try:
+            data = json.loads(row.answer_json)
+        except Exception:
+            data = {}
+        detail = str(data.get("detail") or "")
+        if row.is_correct:
+            return "OK", detail
+        v = (data.get("verdict") or "").strip().upper()
+        if not v:
+            v = "??"
+        return v, detail
+
+    async def enqueue_code_with_tests(
+        self, user_id: int, item_id: str, body: SubmitCodeWithTestsIn
+    ) -> int:
+        await self.assert_task_unlocked(user_id, item_id)
+        item, task = await self._task_item_and_task(item_id)
+        if task.task_type != TaskType.CODE_WITH_TESTS.value:
+            raise HTTPException(400, "Task type mismatch")
+        rows = await self.repo.list_task_code_with_tests([task.id])
+        if not rows:
+            raise HTTPException(500, "Task data missing")
+        if not (body.code or "").strip():
+            raise HTTPException(400, "Код пустой")
+        pending = await self.repo.get_pending_code_run_job(user_id, item_id)
+        if pending:
+            raise HTTPException(
+                409,
+                "Проверка предыдущего решения ещё не завершена. Дождитесь результата.",
+            )
+        job = await self.repo.create_code_run_job(
+            user_id=user_id,
+            item_id=item_id,
+            task_id=task.id,
+            code=body.code,
+        )
+        return job.id
+
+    async def get_code_with_tests_status(
+        self, user_id: int, item_id: str
+    ) -> CodeRunJobStatusOut:
+        item = await self.repo.get_item(item_id)
+        if not item or item.type != ItemType.TASK.value:
+            raise HTTPException(404, "Item not found")
+        latest = await self.repo.get_latest_code_run_job_for_item(user_id, item_id)
+        if not latest:
+            return CodeRunJobStatusOut(
+                status="idle",
+                verdict=None,
+                detail="",
+                isCorrect=None,
+                rewardXp=None,
+            )
+        if latest.status == "pending":
+            return CodeRunJobStatusOut(
+                status="pending",
+                verdict=None,
+                detail="",
+                isCorrect=None,
+                rewardXp=None,
+            )
+        v = (latest.verdict or "").upper()
+        ok = v == "OK"
+        reward: int | None = None
+        if ok:
+            task = await self.repo.get_task_by_item_id(item_id)
+            if task:
+                incorrect = await self.repo.count_incorrect_attempts(
+                    user_id, item_id
+                )
+                reward = self._effective_task_reward_xp(
+                    task.reward_xp or 0, incorrect
+                )
+        return CodeRunJobStatusOut(
+            status="done",
+            verdict=v,
+            detail=latest.detail or "",
+            isCorrect=ok,
+            rewardXp=reward if ok else 0,
+        )
+
+    async def get_code_with_tests_verdict_summary(
+        self, user_id: int, item_id: str
+    ) -> CodeWithTestsResultsOut:
+        _, task = await self._task_item_and_task(item_id)
+        if task.task_type != TaskType.CODE_WITH_TESTS.value:
+            raise HTTPException(400, "Task type mismatch")
+        rows = await self.repo.list_task_attempts(user_id, item_id)
+        cwt = [r for r in rows if r.task_type == TaskType.CODE_WITH_TESTS.value]
+        if not cwt:
+            return CodeWithTestsResultsOut(itemId=item_id, best=None, last=None)
+        last_row = cwt[0]
+        v_last, d_last = self._verdict_from_attempt_row(last_row)
+        last_snap = CodeWithTestsVerdictSnapshot(
+            verdict=v_last,
+            detail=d_last,
+            isCorrect=last_row.is_correct,
+            createdAt=last_row.created_at,
+        )
+        best_row = cwt[0]
+        best_r = self._verdict_rank(self._verdict_from_attempt_row(best_row)[0])
+        for r in cwt[1:]:
+            vv, _ = self._verdict_from_attempt_row(r)
+            rr = self._verdict_rank(vv)
+            if rr < best_r:
+                best_r = rr
+                best_row = r
+            elif rr == best_r and r.created_at > best_row.created_at:
+                best_row = r
+        v_b, d_b = self._verdict_from_attempt_row(best_row)
+        best_snap = CodeWithTestsVerdictSnapshot(
+            verdict=v_b,
+            detail=d_b,
+            isCorrect=best_row.is_correct,
+            createdAt=best_row.created_at,
+        )
+        return CodeWithTestsResultsOut(
+            itemId=item_id,
+            best=best_snap,
+            last=last_snap,
+        )
+
+    async def process_code_run_callback(
+        self, job_id: int, verdict: str, detail: str
+    ) -> None:
+        v = (verdict or "").strip().upper()
+        if v not in self._CODE_VERDICT_LABELS:
+            v = "CE"
+            detail = f"{(detail or '').strip()} (неверный вердикт раннера)".strip()
+        job = await self.repo.finalize_code_run_job_if_pending(job_id, v, detail)
+        if not job:
+            return
+        item = await self.repo.get_item(job.item_id)
+        task = await self.repo.get_task_by_item_id(job.item_id)
+        if not item or not task:
+            return
+        code_trim = (
+            job.code if len(job.code) < 4000 else (job.code[:4000] + "\n…")
+        )
+        answer: dict[str, Any] = {
+            "code": code_trim,
+            "verdict": v,
+            "detail": job.detail,
+        }
+        is_correct = v == "OK"
+        await self._persist_task_attempt(
+            user_id=job.user_id,
+            item=item,
+            task=task,
+            answer=answer,
+            is_correct=is_correct,
+        )
+
     async def admin_create_topic(self, topic_id: str, title: str, order: int):
         return await self.repo.create_topic(topic_id, title, order)
 
@@ -538,6 +735,9 @@ class CourseService:
                 {"left": p["left"], "right": p["right"], "order": int(p.get("order", pi))}
                 for pi, p in enumerate(pairs)
             ]
+        elif tt == "code-with-tests":
+            base["codeTemplate"] = item.get("codeTemplate") or ""
+            base["tests"] = item.get("tests") or []
         else:
             raise HTTPException(400, f"Unsupported taskType: {tt}")
         return base

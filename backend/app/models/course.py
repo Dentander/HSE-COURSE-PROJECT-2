@@ -25,6 +25,7 @@ class TaskType(str, Enum):
     FIND_THE_BUG = "find-the-bug"
     CODE_ORDER = "code-order"
     MATCH_PAIRS = "match-pairs"
+    CODE_WITH_TESTS = "code-with-tests"
 
 
 class Topic(Base):
@@ -149,6 +150,12 @@ class Task(Base):
         passive_deletes=True,
         order_by="TaskPair.order",
     )
+    code_with_tests: Mapped[Optional["TaskCodeWithTests"]] = relationship(
+        "TaskCodeWithTests",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
 
 
 class TaskSingleChoice(Base):
@@ -242,6 +249,38 @@ class TaskPair(Base):
     order: Mapped[int] = mapped_column(Integer, nullable=False)
     left: Mapped[str] = mapped_column(Text, nullable=False)
     right: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class TaskCodeWithTests(Base):
+    __tablename__ = "task_code_with_tests"
+    task_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    code_template: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tests_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+
+class TaskCodeRunJob(Base):
+    __tablename__ = "task_code_run_jobs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    item_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    task_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    verdict: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    detail: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class UserProgress(Base):

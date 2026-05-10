@@ -4,7 +4,12 @@ from pydantic import BaseModel, Field
 TheoryBlockType = Literal["title", "subtitle", "text", "code", "image", "string"]
 ItemType = Literal["lesson", "task"]
 TaskType = Literal[
-    "single-choice", "fill-in-blank", "find-the-bug", "code-order", "match-pairs"
+    "single-choice",
+    "fill-in-blank",
+    "find-the-bug",
+    "code-order",
+    "match-pairs",
+    "code-with-tests",
 ]
 
 

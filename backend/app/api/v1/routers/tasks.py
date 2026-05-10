@@ -1,8 +1,14 @@
+import asyncio
+
 from fastapi import APIRouter, Depends
 
 from app.api.v1.dependencies import get_course_service, get_current_user_id
 from app.schemas.tasks import (
+    CodeRunJobStatusOut,
+    CodeSubmitAcceptedOut,
+    CodeWithTestsResultsOut,
     SubmitCodeOrderIn,
+    SubmitCodeWithTestsIn,
     SubmitFillBlankIn,
     SubmitFindBugIn,
     SubmitMatchPairsIn,
@@ -12,6 +18,7 @@ from app.schemas.tasks import (
     TaskGetOut,
     TaskMyRewardXpOut,
 )
+from app.services.code_run_worker import dispatch_code_run_job
 from app.services.course_service import CourseService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -64,6 +71,31 @@ async def get_match_pairs_task(
     item_id: str, service: CourseService = Depends(get_course_service)
 ):
     return await service.get_match_pairs_task(item_id)
+
+
+@router.get("/{item_id}/code-with-tests/results", response_model=CodeWithTestsResultsOut)
+async def get_code_with_tests_results(
+    item_id: str,
+    user_id: int = Depends(get_current_user_id),
+    service: CourseService = Depends(get_course_service),
+):
+    return await service.get_code_with_tests_verdict_summary(user_id, item_id)
+
+
+@router.get("/{item_id}/code-with-tests/status", response_model=CodeRunJobStatusOut)
+async def get_code_with_tests_status(
+    item_id: str,
+    user_id: int = Depends(get_current_user_id),
+    service: CourseService = Depends(get_course_service),
+):
+    return await service.get_code_with_tests_status(user_id, item_id)
+
+
+@router.get("/{item_id}/code-with-tests", response_model=TaskGetOut)
+async def get_code_with_tests_task(
+    item_id: str, service: CourseService = Depends(get_course_service)
+):
+    return await service.get_code_with_tests_task(item_id)
 
 
 @router.post("/{item_id}/submit/single-choice", response_model=SubmitOut)
@@ -120,6 +152,20 @@ async def submit_match_pairs(
     service: CourseService = Depends(get_course_service),
 ):
     return await service.submit_match_pairs(user_id=user_id, item_id=item_id, body=body)
+
+
+@router.post("/{item_id}/submit/code-with-tests", response_model=CodeSubmitAcceptedOut)
+async def submit_code_with_tests(
+    item_id: str,
+    body: SubmitCodeWithTestsIn,
+    user_id: int = Depends(get_current_user_id),
+    service: CourseService = Depends(get_course_service),
+):
+    job_id = await service.enqueue_code_with_tests(
+        user_id=user_id, item_id=item_id, body=body
+    )
+    asyncio.create_task(dispatch_code_run_job(job_id))
+    return CodeSubmitAcceptedOut()
 
 
 @router.get("/{item_id}/attempts", response_model=list[TaskAttemptOut])
