@@ -57,8 +57,6 @@ class SubmitCodeWithTestsIn(BaseModel):
 
 
 class CodeSubmitAcceptedOut(BaseModel):
-    """Решение принято; проверка идёт — смотрите GET …/code-with-tests/status."""
-
     ok: bool = True
 
 
@@ -73,8 +71,6 @@ class CodeRunJobStatusOut(BaseModel):
 
 
 class CodeWithTestsVerdictSnapshot(BaseModel):
-    """Один зафиксированный вердикт проверки кода."""
-
     model_config = ConfigDict(populate_by_name=True)
 
     verdict: str | None = None
@@ -84,11 +80,6 @@ class CodeWithTestsVerdictSnapshot(BaseModel):
 
 
 class CodeWithTestsResultsOut(BaseModel):
-    """
-    Сводка по заданию «код с тестами»: лучший достигнутый вердикт и последняя попытка.
-    Шкала (лучше → хуже): OK → WA → RE → TL → ML → CE.
-    """
-
     model_config = ConfigDict(populate_by_name=True)
 
     itemId: str
@@ -96,7 +87,6 @@ class CodeWithTestsResultsOut(BaseModel):
     last: CodeWithTestsVerdictSnapshot | None = None
     verdictRanking: list[str] = Field(
         default_factory=lambda: ["OK", "WA", "RE", "TL", "ML", "CE"],
-        description="Порядок вердиктов от лучшего к худшему",
     )
 
 

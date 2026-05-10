@@ -2,9 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class DailyCorrectTaskStreakOut(BaseModel):
-    consecutive_days: int = Field(
-        description="Число дней подряд с хотя бы одним правильно решённым заданием",
-    )
+    consecutive_days: int
 
 
 class TopicTasksProgressOut(BaseModel):
@@ -16,9 +14,6 @@ class TopicTasksProgressOut(BaseModel):
 
 
 class MyTasksProgressOut(BaseModel):
-    topics: list[TopicTasksProgressOut] = Field(
-        default_factory=list,
-        description="Топики в порядке курса с числом заданий и выполненных",
-    )
+    topics: list[TopicTasksProgressOut] = Field(default_factory=list)
     completedTasksTotal: int
     totalTasksTotal: int
