@@ -28,6 +28,72 @@
 - Dockerfile - образ API
 - requirements.txt - зависимости Python
 
+### Запуск через Docker
+
+Нужны Docker (https://docs.docker.com/get-docker/) и Docker Compose (входит в Docker Desktop).
+
+1. Перейдите в каталог с серверной частью:
+
+```bash
+cd backend
+```
+
+2. Создайте файл `backend/.env` (в репозиторий не попадает). Пример для Docker:
+
+```env
+# обязательно: секрет для подписи JWT (замените на свой)
+JWT_SECRET_KEY=dev-secret-change-me
+
+# для загрузки курса через /api/v1/course/admin (HTTP Basic)
+COURSE_ADMIN_EMAIL=admin@example.com
+COURSE_ADMIN_PASSWORD=admin-password
+
+# опционально: письма (подтверждение почты, сброс пароля)
+# SMTP_HOST=smtp.example.com
+# SMTP_PORT=587
+# SMTP_USER=user@example.com
+# SMTP_PASSWORD=password
+# SMTP_FROM=noreply@example.com
+# SMTP_USE_TLS=true
+
+# опционально: ссылки в письмах и на фронтенд
+# FRONTEND_BASE_URL=http://localhost:5173
+# API_PUBLIC_BASE_URL=http://localhost:8000
+```
+
+Обязательно укажите `JWT_SECRET_KEY` - любой длинный секрет для токенов.
+
+Если нужна загрузка курса через админские ручки - задайте `COURSE_ADMIN_EMAIL` и `COURSE_ADMIN_PASSWORD`.
+
+Для отправки писем (подтверждение почты, сброс пароля) - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`. Без SMTP API работает, письма просто не отправляются.
+
+Остальное можно не трогать: ссылки для писем (`FRONTEND_BASE_URL`, `API_PUBLIC_BASE_URL`), сроки токенов, настройки XP - у всех есть значения по умолчанию в коде.
+
+В Docker `DATABASE_URL`, `CODE_RUNNER_URL`, `CODE_RUN_CALLBACK_SECRET` и `CODE_RUN_INTERNAL_BASE_URL` уже прописаны в `docker-compose.yml`, в `.env` их писать не нужно.
+
+3. Соберите образы и запустите все сервисы:
+
+```bash
+docker compose up --build
+```
+
+Для фонового режима добавьте флаг `-d`.
+
+4. Проверьте, что API отвечает:
+
+- Swagger UI: http://localhost:8000/docs
+- Health: http://localhost:8000/health
+- C# runner: http://localhost:5080
+- PostgreSQL: localhost:5432 (логин/пароль/БД: postgres / postgres / education)
+
+При первом старте API создает таблицы в БД автоматически. Контент курса в БД не подгружается - его можно загрузить через эндпоинт `POST /api/v1/course/admin/replace-with-sharpik-course` (нужны учетные данные админа в `.env`: `COURSE_ADMIN_EMAIL`, `COURSE_ADMIN_PASSWORD`).
+
+Остановка:
+
+```bash
+docker compose down
+```
+
 ### Структура БД
 
 ![](data/bd.png)
