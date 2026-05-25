@@ -15,17 +15,27 @@ services:
       timeout: 5s
       retries: 10
 
+  csharp_runner:
+    build: ./csharp_runner
+    ports:
+      - "5080:8080"
+
   api:
     build: .
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/education
+      CODE_RUNNER_URL: http://csharp_runner:8080
+      CODE_RUN_CALLBACK_SECRET: dev-code-run-secret
+      CODE_RUN_INTERNAL_BASE_URL: http://api:8000
     env_file:
       - .env
     depends_on:
       db:
         condition: service_healthy
+      csharp_runner:
+        condition: service_started
 
 volumes:
   pgdata:

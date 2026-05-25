@@ -1,7 +1,11 @@
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends
 from app.api.v1.dependencies import get_course_service, get_current_user_id
-from app.schemas.progress import DailyCorrectTaskStreakOut, MyTasksProgressOut
+from app.schemas.progress import (
+    DailyCorrectTaskStreakOut,
+    MyTasksProgressOut,
+    TopicStoryTasksProgressOut,
+)
 from app.services.course_service import CourseService
 
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -34,6 +38,18 @@ async def get_my_tasks_progress_summary(
     service: CourseService = Depends(get_course_service),
 ):
     return await service.get_my_tasks_progress_summary(user_id)
+
+
+@router.get(
+    "/me/topics/{topic_id}/story-tasks",
+    response_model=TopicStoryTasksProgressOut,
+)
+async def get_topic_story_tasks_progress(
+    topic_id: str,
+    user_id: int = Depends(get_current_user_id),
+    service: CourseService = Depends(get_course_service),
+):
+    return await service.get_topic_story_tasks_progress(user_id, topic_id)
 
 
 @router.get("/{user_id}")

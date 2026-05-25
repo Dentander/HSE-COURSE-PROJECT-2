@@ -8,9 +8,11 @@ from app.models.course import (
     Item,
     Task,
     TaskAnswer,
+    TaskAttempt,
     TaskCodeLine,
     TaskCodeOrder,
-    TaskAttempt,
+    TaskCodeRunJob,
+    TaskCodeWithTests,
     TaskFillBlank,
     TaskFindBug,
     TaskPair,
@@ -122,6 +124,40 @@ class CourseRepository:
             .order_by(TaskPair.task_id, TaskPair.order)
         )
         return list(result.scalars().all())
+
+    async def list_task_code_with_tests(
+        self, task_ids: list[int]
+    ) -> list[TaskCodeWithTests]:
+        if not task_ids:
+            return []
+        result = await self.session.execute(
+            select(TaskCodeWithTests).where(TaskCodeWithTests.task_id.in_(task_ids))
+        )
+        return list(result.scalars().all())
+
+    async def list_story_task_item_ids(self) -> list[str]:
+        result = await self.session.execute(
+            select(Task.item_id).where(Task.kind == "story")
+        )
+        return [row[0] for row in result.all()]
+
+    async def count_story_tasks_in_topic(self, topic_id: str) -> int:
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(Task)
+            .join(Item, Item.id == Task.item_id)
+            .where(Item.topic_id == topic_id, Task.kind == "story")
+        )
+        return int(result.scalar_one() or 0)
+
+    async def list_story_task_item_ids_for_topic(self, topic_id: str) -> list[str]:
+        result = await self.session.execute(
+            select(Task.item_id)
+            .join(Item, Item.id == Task.item_id)
+            .where(Item.topic_id == topic_id, Task.kind == "story")
+            .order_by(Item.order)
+        )
+        return [row[0] for row in result.all()]
 
     async def get_task_by_item_id(self, item_id: str) -> Task | None:
         result = await self.session.execute(select(Task).where(Task.item_id == item_id))
@@ -253,9 +289,19 @@ class CourseRepository:
         order: int,
         src: str | None = None,
         alt: str | None = None,
+        page_kind: str | None = None,
     ) -> TheoryBlock:
+        pk = (page_kind or "theory").strip().lower()
+        if pk not in ("theory", "story"):
+            pk = "theory"
         b = TheoryBlock(
-            item_id=item_id, type=type_, content=content, src=src, alt=alt, order=order
+            item_id=item_id,
+            type=type_,
+            content=content,
+            src=src,
+            alt=alt,
+            order=order,
+            page_kind=pk,
         )
         self.session.add(b)
         await self.session.commit()
@@ -273,6 +319,7 @@ class CourseRepository:
             task_type=payload["taskType"],
             npc_text=payload.get("npcText") or "",
             reward_xp=int(payload.get("rewardXp") or 0),
+            kind=str(payload.get("kind") or "side"),
         )
         self.session.add(task)
         await self.session.flush()
@@ -332,8 +379,85 @@ class CourseRepository:
                         right=str(pair["right"]),
                     )
                 )
+        elif ttype == "code-with-tests":
+            tests = payload.get("tests") or []
+            self.session.add(
+                TaskCodeWithTests(
+                    task_id=task.id,
+                    code_template=payload.get("codeTemplate") or "",
+                    tests_json=json.dumps(tests, ensure_ascii=False),
+                )
+            )
         await self.session.commit()
         return task
+
+    async def create_code_run_job(
+        self,
+        user_id: int,
+        item_id: str,
+        task_id: int,
+        code: str,
+    ) -> TaskCodeRunJob:
+        job = TaskCodeRunJob(
+            user_id=user_id,
+            item_id=item_id,
+            task_id=task_id,
+            code=code,
+            status="pending",
+        )
+        self.session.add(job)
+        await self.session.commit()
+        await self.session.refresh(job)
+        return job
+
+    async def get_code_run_job(self, job_id: int) -> TaskCodeRunJob | None:
+        result = await self.session.execute(
+            select(TaskCodeRunJob).where(TaskCodeRunJob.id == job_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_pending_code_run_job(
+        self, user_id: int, item_id: str
+    ) -> TaskCodeRunJob | None:
+        result = await self.session.execute(
+            select(TaskCodeRunJob)
+            .where(
+                TaskCodeRunJob.user_id == user_id,
+                TaskCodeRunJob.item_id == item_id,
+                TaskCodeRunJob.status == "pending",
+            )
+            .order_by(TaskCodeRunJob.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_latest_code_run_job_for_item(
+        self, user_id: int, item_id: str
+    ) -> TaskCodeRunJob | None:
+        result = await self.session.execute(
+            select(TaskCodeRunJob)
+            .where(
+                TaskCodeRunJob.user_id == user_id,
+                TaskCodeRunJob.item_id == item_id,
+            )
+            .order_by(TaskCodeRunJob.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def finalize_code_run_job_if_pending(
+        self, job_id: int, verdict: str, detail: str
+    ) -> TaskCodeRunJob | None:
+        job = await self.get_code_run_job(job_id)
+        if not job or job.status != "pending":
+            return None
+        job.status = "done"
+        job.verdict = verdict
+        job.detail = (detail or "")[:8000]
+        job.completed_at = dt.datetime.utcnow()
+        await self.session.commit()
+        await self.session.refresh(job)
+        return job
 
     async def delete_task_by_item(self, item_id: str) -> None:
         await self.session.execute(delete(Task).where(Task.item_id == item_id))

@@ -4,7 +4,12 @@ from pydantic import BaseModel, Field
 TheoryBlockType = Literal["title", "subtitle", "text", "code", "image", "string"]
 ItemType = Literal["lesson", "task"]
 TaskType = Literal[
-    "single-choice", "fill-in-blank", "find-the-bug", "code-order", "match-pairs"
+    "single-choice",
+    "fill-in-blank",
+    "find-the-bug",
+    "code-order",
+    "match-pairs",
+    "code-with-tests",
 ]
 
 
@@ -14,6 +19,7 @@ class TheoryBlockOut(BaseModel):
     src: str | None = None
     alt: str | None = None
     order: int | None = None
+    isStoryPage: bool = False
 
 
 class LessonItemOut(BaseModel):
@@ -30,6 +36,7 @@ class TaskItemOut(BaseModel):
     title: str
     order: int | None = None
     taskType: TaskType
+    isStoryTask: bool = False
     npcText: str = ""
     rewardXp: int = 0
     question: str | None = None
@@ -49,3 +56,4 @@ class TopicOut(BaseModel):
     title: str
     order: int | None = None
     items: list[CourseItemOut] = Field(default_factory=list)
+    isOpen: bool | None = None

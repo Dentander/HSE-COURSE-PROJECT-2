@@ -1,9 +1,14 @@
 from datetime import datetime
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 TaskType = Literal[
-    "single-choice", "fill-in-blank", "find-the-bug", "code-order", "match-pairs"
+    "single-choice",
+    "fill-in-blank",
+    "find-the-bug",
+    "code-order",
+    "match-pairs",
+    "code-with-tests",
 ]
 
 
@@ -16,6 +21,7 @@ class TaskGetOut(BaseModel):
     itemId: str
     title: str
     taskType: TaskType
+    isStoryTask: bool = False
     npcText: str = ""
     rewardXp: int = 0
     question: str | None = None
@@ -47,10 +53,49 @@ class SubmitMatchPairsIn(BaseModel):
     pairs: list[dict[str, str]]
 
 
+class SubmitCodeWithTestsIn(BaseModel):
+    code: str
+
+
+class CodeSubmitAcceptedOut(BaseModel):
+    ok: bool = True
+
+
+class CodeRunJobStatusOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: Literal["idle", "pending", "done"]
+    verdict: str | None = None
+    detail: str = ""
+    isCorrect: bool | None = None
+    rewardXp: int | None = None
+
+
+class CodeWithTestsVerdictSnapshot(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    verdict: str | None = None
+    detail: str = ""
+    isCorrect: bool | None = Field(default=None, alias="isCorrect")
+    createdAt: datetime | None = Field(default=None, alias="createdAt")
+
+
+class CodeWithTestsResultsOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    itemId: str
+    best: CodeWithTestsVerdictSnapshot | None = None
+    last: CodeWithTestsVerdictSnapshot | None = None
+    verdictRanking: list[str] = Field(
+        default_factory=lambda: ["OK", "WA", "RE", "TL", "ML", "CE"],
+    )
+
+
 class SubmitOut(BaseModel):
     isCorrect: bool
     message: str
     rewardXp: int = 0
+    streakUpdated: bool = False
 
 
 class TaskAttemptOut(BaseModel):

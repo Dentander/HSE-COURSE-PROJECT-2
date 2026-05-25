@@ -59,6 +59,15 @@ class Settings:
         self.course_admin_password: str = (
             os.getenv("COURSE_ADMIN_PASSWORD") or ""
         ).strip()
+        self.code_runner_url: str = (
+            os.getenv("CODE_RUNNER_URL") or "http://localhost:5080"
+        ).strip()
+        self.code_run_callback_secret: str = (
+            os.getenv("CODE_RUN_CALLBACK_SECRET") or ""
+        ).strip()
+        self.code_run_internal_base_url: str = (
+            os.getenv("CODE_RUN_INTERNAL_BASE_URL") or "http://localhost:8000"
+        ).strip()
 
 
 @lru_cache

@@ -19,6 +19,8 @@ class UserRepository(BaseRepository):
             password_hash=password_hash,
             email_verified=False,
             email_verification_token=email_verification_token,
+            fire_streak=0,
+            is_fire_frozen=False,
         )
         self.session.add(user)
         try:
@@ -113,25 +115,63 @@ class UserRepository(BaseRepository):
         await self.session.execute(stmt)
         await self.session.commit()
 
+    async def set_fire_streak(self, user_id: int, value: int) -> None:
+        stmt = (
+            update(Users)
+            .where(Users.user_id == user_id)
+            .values(fire_streak=int(value))
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+
+    async def freeze_fire_streak(self, user_id: int, locked_value: int) -> None:
+        stmt = (
+            update(Users)
+            .where(Users.user_id == user_id)
+            .values(is_fire_frozen=True, fire_streak=int(locked_value))
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+
     async def get_leaderboard_top_rows(
-        self, limit: int = 30
-    ) -> list[tuple[str, int, int]]:
-        top = (
-            select(Users.user_id, Users.name, Users.xp)
-            .order_by(Users.xp.desc(), Users.user_id.asc())
-            .limit(limit)
-            .subquery()
+        self, limit: int = 30, *, sort_by_fire: bool = False
+    ) -> list[tuple[str, int, int, int]]:
+        if sort_by_fire:
+            top = (
+                select(Users.user_id, Users.name, Users.xp, Users.fire_streak)
+                .order_by(Users.fire_streak.desc(), Users.user_id.asc())
+                .limit(limit)
+                .subquery()
+            )
+            rank_sq = (
+                select(func.count())
+                .select_from(Users)
+                .where(Users.fire_streak > top.c.fire_streak)
+                .scalar_subquery()
+                + 1
+            )
+        else:
+            top = (
+                select(Users.user_id, Users.name, Users.xp, Users.fire_streak)
+                .order_by(Users.xp.desc(), Users.user_id.asc())
+                .limit(limit)
+                .subquery()
+            )
+            rank_sq = (
+                select(func.count())
+                .select_from(Users)
+                .where(Users.xp > top.c.xp)
+                .scalar_subquery()
+                + 1
+            )
+        stmt = select(
+            top.c.name, top.c.xp, top.c.fire_streak, rank_sq.label("rank")
         )
-        rank_sq = (
-            select(func.count())
-            .select_from(Users)
-            .where(Users.xp > top.c.xp)
-            .scalar_subquery()
-            + 1
-        )
-        stmt = select(top.c.name, top.c.xp, rank_sq.label("rank"))
         result = await self.session.execute(stmt)
-        return [(row.name, int(row.xp), int(row.rank)) for row in result.all()]
+        return [
+            (row.name, int(row.xp), int(row.fire_streak or 0), int(row.rank))
+            for row in result.all()
+        ]
 
     async def count_users_with_strictly_higher_xp(self, xp: int) -> int:
         stmt = select(func.count()).select_from(Users).where(Users.xp > xp)

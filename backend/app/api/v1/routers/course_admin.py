@@ -3,9 +3,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.v1.dependencies import get_course_service, require_course_admin_basic
+from app.api.v1.dependencies import (
+    get_course_service,
+    require_course_admin_basic,
+)
 from app.services.course_service import CourseService
 
 router = APIRouter(
@@ -55,18 +58,24 @@ class ItemCreateIn(BaseModel):
 
 
 class TheoryBlockCreateIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     itemId: str = Field(alias="itemId")
     type: Literal["title", "subtitle", "text", "code", "image"]
     content: str
     order: int
     src: str | None = None
     alt: str | None = None
+    pageKind: Literal["theory", "story"] | None = None
 
 
 class TaskBaseIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     itemId: str = Field(alias="itemId")
     npcText: str | None = Field(default=None, alias="npcText")
     rewardXp: int | None = Field(default=None, alias="rewardXp")
+    kind: Literal["story", "side"] | None = None
 
 
 class TaskSingleChoiceCreateIn(TaskBaseIn):
@@ -99,6 +108,15 @@ class TaskMatchPairsCreateIn(TaskBaseIn):
         order: int | None = None
 
     pairs: list[PairIn]
+
+
+class TaskCodeWithTestsCreateIn(TaskBaseIn):
+    class TestCaseIn(BaseModel):
+        input: str
+        output: str
+
+    codeTemplate: str = Field(default="", alias="codeTemplate")
+    tests: list[TestCaseIn]
 
 
 class ReplaceEntireCourseIn(BaseModel):
@@ -168,7 +186,13 @@ async def create_theory_block(
     body: TheoryBlockCreateIn, service: CourseService = Depends(get_course_service)
 ):
     b = await service.admin_create_theory_block(
-        body.itemId, body.type, body.content, body.order, body.src, body.alt
+        body.itemId,
+        body.type,
+        body.content,
+        body.order,
+        body.src,
+        body.alt,
+        page_kind=body.pageKind,
     )
     return {"id": b.id}
 
@@ -236,6 +260,18 @@ async def create_task_match_pairs(
 ):
     payload = body.model_dump(by_alias=True, exclude_none=True) | {
         "taskType": "match-pairs"
+    }
+    task = await service.admin_create_task(payload)
+    return {"id": task.id, "itemId": task.item_id, "taskType": task.task_type}
+
+
+@router.post("/tasks/code-with-tests")
+async def create_task_code_with_tests(
+    body: TaskCodeWithTestsCreateIn,
+    service: CourseService = Depends(get_course_service),
+):
+    payload = body.model_dump(by_alias=True, exclude_none=True) | {
+        "taskType": "code-with-tests",
     }
     task = await service.admin_create_task(payload)
     return {"id": task.id, "itemId": task.item_id, "taskType": task.task_type}

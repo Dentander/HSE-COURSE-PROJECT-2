@@ -22,6 +22,7 @@ class LeaderboardEntryOut(BaseModel):
     rank: int
     name: str
     xp: int
+    fire_streak: int = Field(serialization_alias="fireStreak")
 
 
 class LeaderboardTopOut(BaseModel):

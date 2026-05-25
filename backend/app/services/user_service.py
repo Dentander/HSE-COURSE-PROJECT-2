@@ -19,10 +19,17 @@ class UserService:
             raise HTTPException(404, "User not found")
         await self.user_repo.add_xp(user_id, amount)
 
-    async def get_leaderboard_top(self, limit: int = 30) -> LeaderboardTopOut:
-        rows = await self.user_repo.get_leaderboard_top_rows(limit=limit)
+    async def get_leaderboard_top(
+        self, limit: int = 30, *, sort_by_fire: bool = False
+    ) -> LeaderboardTopOut:
+        rows = await self.user_repo.get_leaderboard_top_rows(
+            limit=limit, sort_by_fire=sort_by_fire
+        )
         entries = [
-            LeaderboardEntryOut(rank=rank, name=name, xp=xp) for name, xp, rank in rows
+            LeaderboardEntryOut(
+                rank=rank, name=name, xp=xp, fire_streak=fire
+            )
+            for name, xp, fire, rank in rows
         ]
         return LeaderboardTopOut(entries=entries)
 

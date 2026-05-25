@@ -9,6 +9,28 @@ COURSE_SHARPIK: list[dict] = [
         "title": "Знакомство с C#",
         "items": [
             {
+                "type": "task",
+                "id": "shp-intro-task-code-sum-demo",
+                "title": "Задание: два числа — сложение (проверка кода)",
+                "taskType": "code-with-tests",
+                "npcText": (
+                    "Напишите программу на C#: прочитайте два целых числа со стандартного ввода "
+                    "(каждое число — с новой строки) и выведите их сумму. "
+                    "Можно опираться на шаблон ниже или переписать с нуля."
+                ),
+                "rewardXp": 15,
+                "codeTemplate": (
+                    "var a = int.Parse(Console.ReadLine()!);\n"
+                    "var b = int.Parse(Console.ReadLine()!);\n"
+                    "Console.WriteLine(a + b);\n"
+                ),
+                "tests": [
+                    {"input": "1\n2\n", "output": "3"},
+                    {"input": "10\n20\n", "output": "30"},
+                    {"input": "-5\n5\n", "output": "0"},
+                ],
+            },
+            {
                 "type": "lesson",
                 "id": "shp-intro-lesson-what-is-csharp",
                 "title": "Что такое C#?",
